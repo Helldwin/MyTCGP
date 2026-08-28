@@ -6,10 +6,20 @@
 // network-first, tant qu'il y a du réseau, le visiteur a toujours la dernière version ; le
 // cache ne sert que de repli hors-ligne.
 //
+// Piège découvert après coup : un `fetch()` normal obéit toujours au cache HTTP du navigateur
+// (Cache-Control envoyé par GitHub Pages — plusieurs heures pour le JS/CSS). "network-first"
+// pouvait donc renvoyer une réponse du cache disque du navigateur SANS toucher le réseau,
+// laissant des visiteurs sur du JS/CSS périmé malgré cette stratégie (symptôme observé : ça
+// marchait en navigation privée — cache vide — mais pas en fenêtre normale, même après avoir
+// vidé le cache du site, le cache HTTP disque n'étant pas toujours couvert par cette action).
+// `cache: "no-store"` force chaque fetch du service worker à ignorer ce cache HTTP et à aller
+// réellement sur le réseau — la mise en cache pour le mode hors-ligne reste gérée nous-mêmes
+// juste après, via l'API Cache Storage (indépendante du cache HTTP du navigateur).
+//
 // CACHE_NAME reste à incrémenter (ex. "tcgp-shell-v3") après un déploiement qui casse quelque
 // chose et nécessite de purger un cache déjà corrompu chez les visiteurs — plus une nécessité
 // systématique à chaque changement mineur.
-const CACHE_NAME = "tcgp-shell-v4";
+const CACHE_NAME = "tcgp-shell-v5";
 
 const APP_SHELL = [
   "./",
@@ -52,7 +62,9 @@ self.addEventListener("activate", (event) => {
 async function networkFirst(request) {
   const cache = await caches.open(CACHE_NAME);
   try {
-    const response = await fetch(request);
+    // cache: "no-store" — voir le commentaire en haut du fichier : sans ça, ce fetch peut être
+    // silencieusement servi par le cache HTTP du navigateur, sans jamais toucher le réseau.
+    const response = await fetch(request, { cache: "no-store" });
     cache.put(request, response.clone());
     return response;
   } catch (err) {
