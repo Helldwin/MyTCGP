@@ -7,6 +7,7 @@ const DEFAULT_UI_STATE = {
   view: "grid", // "grid" | "list"
   sort: "release", // "release" | "completion" | "name" | "count"
   hideCompleted: false,
+  hidePromos: true, // les extensions promo sont masquées par défaut (moins prioritaires)
   onlyMissing: false,
   search: "",
   rarityGroups: [], // groupes de rareté sélectionnés ; vide = tous

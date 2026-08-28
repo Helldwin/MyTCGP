@@ -10,6 +10,7 @@ const els = {
   search: document.getElementById("search-input"),
   onlyMissing: document.getElementById("only-missing"),
   hideCompleted: document.getElementById("hide-completed"),
+  hidePromos: document.getElementById("hide-promos"),
   sortSelect: document.getElementById("sort-select"),
   viewGridBtn: document.getElementById("view-grid"),
   viewListBtn: document.getElementById("view-list"),
@@ -88,32 +89,59 @@ function handleCardToggle(card) {
   });
 }
 
-function handleBulkMark(set, owned) {
-  const ids = set.cards.map((card) => card.id);
-  const previousStates = set.cards.map((card) => isOwned(card.id));
-  const verb = owned ? "possédées" : "manquantes";
+/**
+ * Marque un lot de cartes possédées/manquantes après confirmation, avec toast + annulation.
+ * Partagé par les actions groupées par extension et par palier de rareté.
+ */
+function markCardsWithConfirm(cards, owned, { confirmMessage, toastMessage }) {
+  if (cards.length === 0) return;
+  if (!window.confirm(confirmMessage)) return;
 
-  const confirmed = window.confirm(`Marquer les ${ids.length} cartes de « ${set.name} » comme ${verb} ?`);
-  if (!confirmed) return;
+  const ids = cards.map((card) => card.id);
+  const previousStates = cards.map((card) => isOwned(card.id));
 
   setManyOwned(ids, owned);
-  set.cards.forEach((card) => patchCardDOM(card));
+  cards.forEach((card) => patchCardDOM(card));
   refreshAfterOwnershipChange();
   updateExportReminder();
-  showToast(`Extension « ${set.name} » marquée ${verb}.`, {
+  showToast(toastMessage, {
     actionLabel: "Annuler",
     onAction: () => {
-      set.cards.forEach((card, index) => setOwned(card.id, previousStates[index]));
-      set.cards.forEach((card) => patchCardDOM(card));
+      cards.forEach((card, index) => setOwned(card.id, previousStates[index]));
+      cards.forEach((card) => patchCardDOM(card));
       refreshAfterOwnershipChange();
       updateExportReminder();
     },
   });
 }
 
+function handleBulkMark(set, owned) {
+  const verb = owned ? "possédées" : "manquantes";
+  markCardsWithConfirm(set.cards, owned, {
+    confirmMessage: `Marquer les ${set.cards.length} cartes de « ${set.name} » comme ${verb} ?`,
+    toastMessage: `Extension « ${set.name} » marquée ${verb}.`,
+  });
+}
+
+/** Un clic sur une pastille de palier marque tout le palier possédé, ou le vide s'il l'était déjà. */
+function handleTierMark(set, group) {
+  const tierDef = RARITY_TIERS.find((tier) => tier.group === group);
+  if (!tierDef) return;
+  const cards = set.cards.filter((card) => card.rarity && card.rarity.group === group);
+  if (cards.length === 0) return;
+
+  const owned = !cards.every((card) => isOwned(card.id));
+  const verb = owned ? "possédées" : "manquantes";
+  markCardsWithConfirm(cards, owned, {
+    confirmMessage: `Marquer les ${cards.length} cartes ${tierDef.label} de « ${set.name} » comme ${verb} ?`,
+    toastMessage: `Palier ${tierDef.label} de « ${set.name} » marqué ${verb}.`,
+  });
+}
+
 function initControlsFromState() {
   els.onlyMissing.checked = uiState.onlyMissing;
   els.hideCompleted.checked = uiState.hideCompleted;
+  els.hidePromos.checked = uiState.hidePromos;
   els.sortSelect.value = uiState.sort;
   els.viewGridBtn.classList.toggle("active", uiState.view === "grid");
   els.viewListBtn.classList.toggle("active", uiState.view === "list");
@@ -182,6 +210,12 @@ els.hideCompleted.addEventListener("change", (event) => {
   render();
 });
 
+els.hidePromos.addEventListener("change", (event) => {
+  uiState.hidePromos = event.target.checked;
+  saveUIState();
+  render();
+});
+
 els.sortSelect.addEventListener("change", (event) => {
   uiState.sort = event.target.value;
   saveUIState();
@@ -245,6 +279,26 @@ els.copyMissingBtn.addEventListener("click", () => copyMissingToClipboard(state.
  * écouteur par carte serait coûteux en mémoire et ralentirait chaque construction de
  * grille ; deux écouteurs ici suffisent pour toute la page.
  */
+/**
+ * Gère l'échec de chargement d'une image, avec repli en cascade optionnel : si l'élément
+ * porte un attribut data-fallback (ex. logo anglais quand le français manque), on l'essaie
+ * une fois ; sinon on marque son conteneur en erreur pour afficher le repli visuel (CSS).
+ */
+function handleDelegatedImageError(event) {
+  const img = event.target;
+  if (img.tagName !== "IMG") return;
+
+  if (img.dataset.fallback) {
+    const fallback = img.dataset.fallback;
+    delete img.dataset.fallback;
+    img.src = fallback;
+    return;
+  }
+
+  const wrap = img.closest(".card-media, .set-logo-wrap, .pack-icon-wrap");
+  if (wrap) wrap.classList.add("img-error");
+}
+
 function setupDelegatedEvents() {
   els.main.addEventListener("click", (event) => {
     const toggleBtn = event.target.closest(".card-toggle");
@@ -271,20 +325,16 @@ function setupDelegatedEvents() {
       if (actionBtn.dataset.action === "mark-all-owned") handleBulkMark(set, true);
       else if (actionBtn.dataset.action === "mark-all-missing") handleBulkMark(set, false);
       else if (actionBtn.dataset.action === "copy-missing") copyMissingToClipboard([set]);
+      else if (actionBtn.dataset.action === "mark-tier") handleTierMark(set, actionBtn.dataset.tierGroup);
     }
   });
 
   // Les événements "error" ne remontent pas (bubble) : on les capte donc en phase de
   // capture sur un ancêtre commun pour garder un seul écouteur au lieu d'un par image.
-  els.main.addEventListener(
-    "error",
-    (event) => {
-      if (event.target.tagName === "IMG" && event.target.closest(".card-media")) {
-        event.target.closest(".card-media").classList.add("img-error");
-      }
-    },
-    true
-  );
+  // Certaines images (logo d'extension) ont un repli (data-fallback, ex. anglais si le
+  // français manque) tenté une fois avant d'afficher l'état d'erreur définitif.
+  els.main.addEventListener("error", handleDelegatedImageError, true);
+  els.detailDialog?.addEventListener("error", handleDelegatedImageError, true);
 }
 setupDelegatedEvents();
 

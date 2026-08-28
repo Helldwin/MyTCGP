@@ -3,9 +3,12 @@
 // servi via jsDelivr. Cache local (localStorage) pour éviter de re-télécharger à chaque visite.
 
 const DATA_BASE = "https://cdn.jsdelivr.net/npm/pokemon-tcg-pocket-database@latest/dist";
-const IMAGE_BASE = "https://cdn.jsdelivr.net/gh/flibustier/pokemon-tcg-exchange@main/public/images/cards-by-set";
+const EXCHANGE_BASE = "https://cdn.jsdelivr.net/gh/flibustier/pokemon-tcg-exchange@main/public/images";
+const IMAGE_BASE = `${EXCHANGE_BASE}/cards-by-set`;
 const RARITY_IMAGE_BASE = `${DATA_BASE}/images/rarities`;
-const CACHE_KEY = "tcgp_data_cache_v3";
+const SET_LOGO_BASE = `${EXCHANGE_BASE}/sets`;
+const PACK_IMAGE_BASE = `${EXCHANGE_BASE}/packs`;
+const CACHE_KEY = "tcgp_data_cache_v5";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 // Traductions FR + couleurs pour les métadonnées qui n'existent qu'en anglais dans les données.
@@ -67,6 +70,24 @@ function cardImageUrl(setCode, number) {
   return `${IMAGE_BASE}/${setCode}/${number}.webp`;
 }
 
+// Miniature ~65% plus légère que l'image complète (mêmes proportions) : utilisée dans la
+// grille (potentiellement des centaines de cartes à la fois) ; l'image complète ne sert
+// que dans la fiche détaillée d'une seule carte à la fois.
+function cardThumbUrl(setCode, number) {
+  return `${IMAGE_BASE}/thumbnails/${setCode}/${number}.webp`;
+}
+
+// Le logo n'existe pas toujours en français pour les extensions les plus récentes : l'appelant
+// tente d'abord `logo`, puis `logoFallback` (anglais) en cas d'échec, avant de masquer le logo.
+function setLogoUrl(setCode, locale) {
+  return `${SET_LOGO_BASE}/LOGO_expansion_${setCode}_${locale}.webp`;
+}
+
+/** Image d'un booster (pack d'ouverture), à partir de son nom (ex. "Mewtwo", "Mega Blaziken"). */
+function packImageUrl(packName) {
+  return `${PACK_IMAGE_BASE}/${encodeURIComponent(packName)}.webp`;
+}
+
 function buildRarityMeta(rarities) {
   const meta = {};
   Object.entries(rarities).forEach(([code, info]) => {
@@ -118,6 +139,7 @@ async function fetchAllSetsWithCards() {
       localId: String(card.number),
       name: card.name,
       image: cardImageUrl(card.set, card.number),
+      thumb: cardThumbUrl(card.set, card.number),
       packs: card.packs || [],
       rarityCode: card.rarity || null,
       rarity,
@@ -146,6 +168,8 @@ async function fetchAllSetsWithCards() {
         name: (s.name && (s.name.fr || s.name.en)) || s.code,
         releaseDate: s.releaseDate || "",
         packs: s.packs || [],
+        logo: setLogoUrl(s.code, "fr_FR"),
+        logoFallback: setLogoUrl(s.code, "en_US"),
         cards: setCards,
       });
     });

@@ -36,6 +36,11 @@ function cardMatchesFilters(card) {
   return true;
 }
 
+/** Une extension "PROMO-A"/"PROMO-B" est un lot de promos, pas une extension régulière. */
+function isPromoSet(set) {
+  return /^promo/i.test(set.id);
+}
+
 /** Nombre de cartes possédées dans un set (helper réutilisé partout pour éviter la duplication). */
 function ownedCountInSet(set) {
   let count = 0;
@@ -43,6 +48,44 @@ function ownedCountInSet(set) {
     if (isOwned(card.id)) count++;
   }
   return count;
+}
+
+// Paliers de complétion d'une extension, du plus courant au plus rare. "Terminée" ne veut
+// pas dire "toutes les cartes sans exception" (les Couronnes notamment sont très dures à
+// obtenir) mais "toutes les cartes classiques (Diamant)" — les paliers suivants sont des
+// objectifs bonus affichés séparément.
+const RARITY_TIERS = [
+  { group: "Diamond", label: "Diamants", icon: `${RARITY_IMAGE_BASE}/diamond.webp` },
+  { group: "Star", label: "Étoiles", icon: `${RARITY_IMAGE_BASE}/star.webp` },
+  { group: "Shiny", label: "Brillantes", icon: `${RARITY_IMAGE_BASE}/shiny-star.webp` },
+  { group: "Crown", label: "Couronnes (Or)", icon: `${RARITY_IMAGE_BASE}/crown.webp` },
+];
+
+/** Répartition possédé/total par palier de rareté pour une extension donnée. */
+function computeSetTiers(set) {
+  const tiers = {};
+  RARITY_TIERS.forEach((tier) => {
+    tiers[tier.group] = { owned: 0, total: 0 };
+  });
+  set.cards.forEach((card) => {
+    const group = card.rarity ? card.rarity.group : null;
+    if (!group || !tiers[group]) return; // rareté inconnue : hors paliers
+    tiers[group].total++;
+    if (isOwned(card.id)) tiers[group].owned++;
+  });
+  return tiers;
+}
+
+/** Ratio de progression "officiel" d'une extension : palier Diamant, ou total si pas de Diamant. */
+function setCompletionRatio(set) {
+  const diamond = computeSetTiers(set).Diamond;
+  if (diamond.total > 0) return diamond.owned / diamond.total;
+  return set.cards.length ? ownedCountInSet(set) / set.cards.length : 0;
+}
+
+/** Une extension est "Terminée" une fois toutes ses cartes Diamant obtenues. */
+function isSetComplete(set) {
+  return set.cards.length > 0 && setCompletionRatio(set) >= 1;
 }
 
 function computeStats(sets) {
@@ -61,19 +104,17 @@ function computeStats(sets) {
     }
     const seriesKey = set.id.charAt(0);
     if (!bySeries[seriesKey]) bySeries[seriesKey] = { owned: 0, total: 0 };
-    let setOwned = 0;
     set.cards.forEach((card) => {
       totalCards++;
       bySeries[seriesKey].total++;
       if (isOwned(card.id)) {
         totalOwned++;
-        setOwned++;
         bySeries[seriesKey].owned++;
         const label = card.rarity ? card.rarity.groupLabel : "Autre";
         byRarityGroup[label] = (byRarityGroup[label] || 0) + 1;
       }
     });
-    if (setOwned === set.cards.length) completedSets++;
+    if (isSetComplete(set)) completedSets++;
   });
 
   return {
@@ -122,7 +163,7 @@ function renderDashboard(container, stats) {
       </div>
       <div class="dash-main-text">
         <strong>${stats.totalOwned} / ${stats.totalCards}</strong> cartes possédées
-        <span class="dash-sub">${stats.completedSets} / ${stats.totalSets} extensions complétées</span>
+        <span class="dash-sub">${stats.completedSets} / ${stats.totalSets} extensions terminées (tous les Diamants)</span>
       </div>
     </div>
     <div class="dash-series-group">${seriesHtml}</div>
@@ -145,7 +186,11 @@ function collectFilterOptions(sets) {
         else hasUnknownElement = true;
       }
       if (card.category) categories.set(card.category, card.categoryLabel);
-      (card.packs || []).forEach((pack) => packs.add(pack));
+      // "Vol. X" / "B Series Vol. X" sont des pools de tirage internes aux promos
+      // (PROMO-A/B), pas de vrais boosters à thème : pas d'icône, pas de filtre pertinent.
+      (card.packs || []).forEach((pack) => {
+        if (!/^(b series )?vol\.\s*\d+$/i.test(pack)) packs.add(pack);
+      });
     });
   });
 
@@ -177,7 +222,17 @@ function renderFilterPanel(container, sets, onChange) {
     .map(([key, label]) => `<button type="button" class="chip" data-filter="categories" data-value="${key}">${label}</button>`)
     .join("");
 
-  const packOptions = options.packs.map((pack) => `<option value="${pack}">${pack}</option>`).join("");
+  const packChips = options.packs
+    .map(
+      (pack) => `
+      <button type="button" class="chip pack-chip" data-pack="${pack}" title="${pack}">
+        <span class="pack-icon-wrap">
+          <img class="pack-icon" src="${packImageUrl(pack)}" alt="" loading="lazy" decoding="async" />
+        </span>
+        ${pack}
+      </button>`
+    )
+    .join("");
 
   container.innerHTML = `
     <div class="filter-group">
@@ -194,10 +249,7 @@ function renderFilterPanel(container, sets, onChange) {
     </div>
     <div class="filter-group">
       <span class="filter-legend">Booster</span>
-      <select id="pack-filter">
-        <option value="">Tous les boosters</option>
-        ${packOptions}
-      </select>
+      <div class="chip-row pack-chip-row">${packChips}</div>
     </div>
     <button type="button" class="btn btn-tiny" id="clear-filters">Réinitialiser les filtres</button>
   `;
@@ -214,12 +266,15 @@ function renderFilterPanel(container, sets, onChange) {
     });
   });
 
-  const packSelect = container.querySelector("#pack-filter");
-  packSelect.value = uiState.pack;
-  packSelect.addEventListener("change", () => {
-    uiState.pack = packSelect.value;
-    saveUIState();
-    onChange();
+  container.querySelectorAll(".pack-chip").forEach((chip) => {
+    const pack = chip.dataset.pack;
+    if (uiState.pack === pack) chip.classList.add("active");
+    chip.addEventListener("click", () => {
+      uiState.pack = uiState.pack === pack ? "" : pack;
+      saveUIState();
+      renderFilterPanel(container, sets, onChange);
+      onChange();
+    });
   });
 
   container.querySelector("#clear-filters").addEventListener("click", () => {
@@ -246,6 +301,30 @@ function buildRarityIcons(rarity) {
   return `<span class="rarity-icons" role="img" aria-label="${rarity.label}" title="${rarity.label}">${icons}</span>`;
 }
 
+/** Numéro façon jeu, complété avec des zéros (ex. "1" -> "001"). */
+function formatCardNumber(localId) {
+  return String(localId).padStart(3, "0");
+}
+
+/**
+ * Contenu de la zone image d'une carte. Comme dans le jeu, une carte non possédée n'affiche
+ * pas son illustration (évite de "spoiler" le visuel et surtout de télécharger l'image d'une
+ * carte qu'on n'a pas) — seul son numéro est visible, sur un fond neutre.
+ */
+function buildCardMediaHtml(card, owned, { large = false } = {}) {
+  if (!owned) {
+    return `<span class="card-placeholder"><span class="card-placeholder-number">${formatCardNumber(card.localId)}</span></span>`;
+  }
+  // Miniature dans la grille (potentiellement des centaines à la fois), pleine résolution
+  // uniquement dans la fiche détaillée (une seule carte affichée). Repli sur l'image complète
+  // si la miniature n'est pas renseignée (ex. donnée en cache d'une version antérieure).
+  const src = large ? card.image : card.thumb || card.image;
+  return `
+    <img src="${src}" alt="${card.name}" loading="lazy" decoding="async" />
+    <span class="card-noimage">Image indisponible</span>
+  `;
+}
+
 function renderCard(card) {
   const owned = isOwned(card.id);
   const wrapper = document.createElement("div");
@@ -257,10 +336,7 @@ function renderCard(card) {
 
   wrapper.innerHTML = `
     <button type="button" class="card-toggle" aria-pressed="${owned}" title="${owned ? "Retirer de la collection" : "Ajouter à la collection"}">
-      <span class="card-media">
-        <img src="${card.image}" alt="${card.name}" loading="lazy" decoding="async" />
-        <span class="card-noimage">Image indisponible</span>
-      </span>
+      <span class="card-media">${buildCardMediaHtml(card, owned)}</span>
       <span class="card-badge">${owned ? "✓" : "✕"}</span>
     </button>
     <div class="card-footer">
@@ -285,7 +361,7 @@ function renderSetSection(set, visibleCards, stats) {
   const total = set.cards.length;
   const owned = ownedCountInSet(set);
   const pct = total ? Math.round((owned / total) * 100) : 0;
-  const complete = owned === total;
+  const complete = isSetComplete(set);
   const isNewest = set.id === stats.newestSetId;
 
   // Perf : toutes les extensions sont repliées par défaut (une recherche ou un filtre actif
@@ -305,6 +381,10 @@ function renderSetSection(set, visibleCards, stats) {
   summary.innerHTML = `
     <span class="set-summary-main">
       <span class="set-chevron" aria-hidden="true">▸</span>
+      ${set.logo ? `
+        <span class="set-logo-wrap">
+          <img class="set-logo" src="${set.logo}" data-fallback="${set.logoFallback}" alt="" loading="lazy" decoding="async" />
+        </span>` : ""}
       <span class="set-title">
         ${set.name}
         ${isNewest ? '<span class="badge badge-new">Nouveau</span>' : ""}
@@ -329,6 +409,11 @@ function renderSetSection(set, visibleCards, stats) {
     <button type="button" class="btn btn-tiny" data-action="copy-missing">Copier les manquantes</button>
   `;
   body.appendChild(actions);
+
+  const tiers = document.createElement("div");
+  tiers.className = "set-tiers";
+  tiers.innerHTML = buildTierPillsHtml(set);
+  body.appendChild(tiers);
 
   const grid = document.createElement("div");
   grid.className = `card-grid view-${uiState.view}`;
@@ -374,6 +459,39 @@ function patchCardDOM(card) {
   toggleBtn.setAttribute("aria-pressed", String(owned));
   toggleBtn.title = owned ? "Retirer de la collection" : "Ajouter à la collection";
   el.querySelector(".card-badge").textContent = owned ? "✓" : "✕";
+
+  // L'image n'apparaît qu'une fois la carte possédée (voir buildCardMediaHtml) : il faut
+  // reconstruire cette zone au toggle, pas seulement les classes/textes.
+  const media = el.querySelector(".card-media");
+  media.classList.remove("img-error");
+  media.innerHTML = buildCardMediaHtml(card, owned);
+}
+
+/**
+ * Ligne des pastilles de palier (Diamant/Étoile/Brillante/Couronne) pour une extension.
+ * Chaque pastille est cliquable (délégué via data-action="mark-tier", voir app.js) : un
+ * clic marque tout le palier possédé, un second (une fois complet) le remet à manquant.
+ */
+function buildTierPillsHtml(set) {
+  const tiers = computeSetTiers(set);
+  return RARITY_TIERS.map((tierDef) => {
+    const t = tiers[tierDef.group];
+    if (t.total === 0) return "";
+    const complete = t.owned === t.total;
+    const action = complete ? "tout marquer manquant" : "tout marquer possédé";
+    return `
+      <button
+        type="button"
+        class="tier-pill${complete ? " tier-complete" : ""}"
+        data-action="mark-tier"
+        data-tier-group="${tierDef.group}"
+        title="${tierDef.label} : ${t.owned}/${t.total} — clique pour ${action}"
+      >
+        <img class="rarity-icon" src="${tierDef.icon}" alt="" loading="lazy" decoding="async" />
+        <span class="tier-count">${t.owned}/${t.total}</span>
+        ${complete ? '<span class="tier-check" aria-hidden="true">✓</span>' : ""}
+      </button>`;
+  }).join("");
 }
 
 /** Met à jour les barres de progression des extensions déjà affichées, sans tout reconstruire. */
@@ -384,7 +502,7 @@ function updateSetProgressBars(sets) {
     const total = set.cards.length;
     const owned = ownedCountInSet(set);
     const pct = total ? Math.round((owned / total) * 100) : 0;
-    const complete = owned === total;
+    const complete = isSetComplete(set);
 
     section.classList.toggle("complete", complete);
     const fill = section.querySelector(".set-progress-fill");
@@ -402,15 +520,18 @@ function updateSetProgressBars(sets) {
     } else if (!complete && completeBadge) {
       completeBadge.remove();
     }
+
+    const tiersEl = section.querySelector(".set-tiers");
+    if (tiersEl) tiersEl.innerHTML = buildTierPillsHtml(set);
   });
 }
 
 function sortSets(sets) {
-  const withStats = sets.map((set) => {
-    const total = set.cards.length;
-    const owned = ownedCountInSet(set);
-    return { set, total, pct: total ? owned / total : 0 };
-  });
+  const withStats = sets.map((set) => ({
+    set,
+    total: set.cards.length,
+    pct: setCompletionRatio(set),
+  }));
 
   switch (uiState.sort) {
     case "completion":
@@ -437,9 +558,8 @@ function renderSetsList(container, sets, stats) {
   let rendered = 0;
 
   sorted.forEach((set) => {
-    const total = set.cards.length;
-    const owned = ownedCountInSet(set);
-    if (uiState.hideCompleted && total > 0 && owned === total) return;
+    if (uiState.hideCompleted && isSetComplete(set)) return;
+    if (uiState.hidePromos && isPromoSet(set)) return;
 
     const visibleCards = set.cards.filter(cardMatchesFilters);
     if (visibleCards.length === 0) return;
@@ -506,14 +626,25 @@ function openCardDetail(card) {
   dialog.innerHTML = `
     <form method="dialog" class="card-detail">
       <button type="submit" class="card-detail-close" aria-label="Fermer">×</button>
-      <div class="card-detail-media">
-        <img src="${card.image}" alt="${card.name}" />
-      </div>
+      <div class="card-detail-media">${buildCardMediaHtml(card, owned, { large: true })}</div>
       <div class="card-detail-info">
         <h3>${card.name}</h3>
         <p class="card-detail-sub">${card.id}${card.rarity ? " · " + card.rarity.label : ""} ${buildRarityIcons(card.rarity)}</p>
         <dl class="card-detail-stats">${rowsHtml}</dl>
-        ${card.packs && card.packs.length ? `<p class="card-detail-packs">Boosters : ${card.packs.join(", ")}</p>` : ""}
+        ${
+          card.packs && card.packs.length
+            ? `<div class="card-detail-packs">
+                ${card.packs
+                  .map(
+                    (pack) => `
+                    <span class="pack-icon-wrap" title="${pack}">
+                      <img class="pack-icon" src="${packImageUrl(pack)}" alt="${pack}" loading="lazy" decoding="async" />
+                    </span>`
+                  )
+                  .join("")}
+              </div>`
+            : ""
+        }
         <button type="button" class="btn" id="card-detail-toggle">
           ${owned ? "Marquer comme manquante" : "Marquer comme possédée"}
         </button>
