@@ -9,7 +9,7 @@
 // CACHE_NAME reste à incrémenter (ex. "tcgp-shell-v3") après un déploiement qui casse quelque
 // chose et nécessite de purger un cache déjà corrompu chez les visiteurs — plus une nécessité
 // systématique à chaque changement mineur.
-const CACHE_NAME = "tcgp-shell-v3";
+const CACHE_NAME = "tcgp-shell-v4";
 
 const APP_SHELL = [
   "./",
@@ -23,6 +23,8 @@ const APP_SHELL = [
   "js/ui-state.js",
   "js/render.js",
   "js/share-image.js",
+  "js/qrcode.js",
+  "js/sync.js",
   "js/app.js",
   "js/sw-register.js",
   "icons/icon.svg",

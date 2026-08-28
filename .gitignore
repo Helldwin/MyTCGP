@@ -1,0 +1,4 @@
+# Outillage de développement (tests) — ne fait pas partie du site déployé.
+node_modules/
+test-results/
+playwright-report/

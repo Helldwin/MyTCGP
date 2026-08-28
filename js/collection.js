@@ -1,63 +1,136 @@
-// Gestion de la collection possédée (localStorage), indépendante des données de cartes.
+// Gestion de la collection (localStorage), indépendante des données de cartes.
+// Chaque carte a une quantité (0 = manquante, N = possédée avec N exemplaires) — le suivi des
+// doublons permet de repérer ce qu'on peut échanger. Une liste de souhaits séparée marque les
+// cartes manquantes qu'on cible en priorité.
 
 const COLLECTION_KEY = "tcgp_collection";
+const WISHLIST_KEY = "tcgp_wishlist";
 const LAST_MODIFIED_KEY = "tcgp_last_modified";
 const LAST_EXPORTED_KEY = "tcgp_last_exported";
+const MAX_QUANTITY = 99;
 
-function loadOwnedSet() {
+function loadQuantities() {
   try {
     const raw = localStorage.getItem(COLLECTION_KEY);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw);
+    if (!raw) return new Map();
+    const parsed = JSON.parse(raw);
+    // Ancien format (avant le suivi des doublons) : tableau d'ids possédés, 1 exemplaire chacun.
+    if (Array.isArray(parsed)) return new Map(parsed.map((id) => [id, 1]));
+    if (parsed && typeof parsed === "object") {
+      return new Map(Object.entries(parsed).filter(([, qty]) => Number(qty) > 0).map(([id, qty]) => [id, Number(qty)]));
+    }
+    return new Map();
+  } catch {
+    return new Map();
+  }
+}
+
+function loadWishlist() {
+  try {
+    const raw = localStorage.getItem(WISHLIST_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
     return new Set(Array.isArray(arr) ? arr : []);
   } catch {
     return new Set();
   }
 }
 
-let ownedCards = loadOwnedSet();
+let cardQuantities = loadQuantities();
+let wishlistIds = loadWishlist();
 
-function saveOwnedSet() {
+function saveQuantities() {
   try {
-    localStorage.setItem(COLLECTION_KEY, JSON.stringify([...ownedCards]));
+    localStorage.setItem(COLLECTION_KEY, JSON.stringify(Object.fromEntries(cardQuantities)));
     localStorage.setItem(LAST_MODIFIED_KEY, new Date().toISOString());
   } catch {
     // localStorage plein ou indisponible : le changement reste actif en mémoire pour la session.
   }
 }
 
-function isOwned(cardId) {
-  return ownedCards.has(cardId);
-}
-
-function getOwnedCount() {
-  return ownedCards.size;
-}
-
-function toggleOwned(cardId) {
-  if (ownedCards.has(cardId)) {
-    ownedCards.delete(cardId);
-  } else {
-    ownedCards.add(cardId);
+function saveWishlist() {
+  try {
+    localStorage.setItem(WISHLIST_KEY, JSON.stringify([...wishlistIds]));
+  } catch {
+    // pas bloquant
   }
-  saveOwnedSet();
-  return ownedCards.has(cardId);
 }
 
-/** Force l'état possédé/manquant d'une carte donnée (utilisé pour l'annulation). */
-function setOwned(cardId, owned) {
-  if (owned) ownedCards.add(cardId);
-  else ownedCards.delete(cardId);
-  saveOwnedSet();
+function getQuantity(cardId) {
+  return cardQuantities.get(cardId) || 0;
 }
 
-/** Marque plusieurs cartes possédées/manquantes en une fois (actions groupées par extension). */
+function isOwned(cardId) {
+  return getQuantity(cardId) > 0;
+}
+
+/** Nombre de cartes DISTINCTES possédées (pas la somme des doublons). */
+function getOwnedCount() {
+  return cardQuantities.size;
+}
+
+/** Copie {cardId: quantité} de toute la collection (utilisé pour l'export et la synchro). */
+function getAllQuantities() {
+  return Object.fromEntries(cardQuantities);
+}
+
+/** Fixe la quantité d'une carte (0 = la retire de la collection). Bornée à [0, 99]. */
+function setQuantity(cardId, quantity) {
+  const clamped = Math.max(0, Math.min(MAX_QUANTITY, Math.round(quantity) || 0));
+  if (clamped <= 0) cardQuantities.delete(cardId);
+  else cardQuantities.set(cardId, clamped);
+  saveQuantities();
+  if (clamped > 0) removeFromWishlist(cardId); // possédée : plus besoin de la souhaiter
+  return clamped;
+}
+
+function incrementQuantity(cardId) {
+  return setQuantity(cardId, getQuantity(cardId) + 1);
+}
+
+function decrementQuantity(cardId) {
+  return setQuantity(cardId, getQuantity(cardId) - 1);
+}
+
+/** Bascule possédée/manquante (1 exemplaire) — l'interaction rapide principale sur une carte. */
+function toggleOwned(cardId) {
+  return setQuantity(cardId, isOwned(cardId) ? 0 : 1) > 0;
+}
+
+/** Force l'état possédé/manquant d'une carte à une quantité précise (utilisé pour l'annulation). */
+function setOwned(cardId, quantity) {
+  setQuantity(cardId, quantity);
+}
+
+/** Marque plusieurs cartes possédées (1 exemplaire)/manquantes en une fois (actions groupées). */
 function setManyOwned(cardIds, owned) {
   cardIds.forEach((id) => {
-    if (owned) ownedCards.add(id);
-    else ownedCards.delete(id);
+    if (owned) {
+      if (!isOwned(id)) cardQuantities.set(id, 1);
+    } else {
+      cardQuantities.delete(id);
+    }
   });
-  saveOwnedSet();
+  saveQuantities();
+  if (owned) cardIds.forEach((id) => removeFromWishlist(id));
+}
+
+function isWishlisted(cardId) {
+  return wishlistIds.has(cardId);
+}
+
+function getWishlistIds() {
+  return [...wishlistIds];
+}
+
+function toggleWishlist(cardId) {
+  if (wishlistIds.has(cardId)) wishlistIds.delete(cardId);
+  else wishlistIds.add(cardId);
+  saveWishlist();
+  return wishlistIds.has(cardId);
+}
+
+function removeFromWishlist(cardId) {
+  if (wishlistIds.delete(cardId)) saveWishlist();
 }
 
 function getLastModified() {
@@ -87,7 +160,8 @@ function touchLastExported() {
 function exportCollection() {
   const payload = {
     exportedAt: new Date().toISOString(),
-    owned: [...ownedCards],
+    quantities: Object.fromEntries(cardQuantities),
+    wishlist: [...wishlistIds],
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -107,11 +181,8 @@ function importCollectionFromFile(file) {
     reader.onload = () => {
       try {
         const parsed = JSON.parse(reader.result);
-        const arr = Array.isArray(parsed) ? parsed : parsed.owned;
-        if (!Array.isArray(arr)) throw new Error("Format de fichier invalide.");
-        ownedCards = new Set(arr);
-        saveOwnedSet();
-        resolve(ownedCards.size);
+        applyImportedCollection(parsed);
+        resolve(cardQuantities.size);
       } catch (err) {
         reject(err);
       }
@@ -119,4 +190,24 @@ function importCollectionFromFile(file) {
     reader.onerror = () => reject(reader.error);
     reader.readAsText(file);
   });
+}
+
+/** Accepte l'ancien format ({owned:[...]})  et le nouveau ({quantities:{...}, wishlist:[...]}). */
+function applyImportedCollection(parsed) {
+  if (Array.isArray(parsed)) {
+    cardQuantities = new Map(parsed.map((id) => [id, 1]));
+  } else if (parsed && Array.isArray(parsed.owned)) {
+    cardQuantities = new Map(parsed.owned.map((id) => [id, 1]));
+  } else if (parsed && parsed.quantities && typeof parsed.quantities === "object") {
+    cardQuantities = new Map(
+      Object.entries(parsed.quantities)
+        .filter(([, qty]) => Number(qty) > 0)
+        .map(([id, qty]) => [id, Number(qty)])
+    );
+  } else {
+    throw new Error("Format de fichier invalide.");
+  }
+  wishlistIds = new Set(Array.isArray(parsed?.wishlist) ? parsed.wishlist : []);
+  saveQuantities();
+  saveWishlist();
 }

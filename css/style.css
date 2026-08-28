@@ -191,6 +191,10 @@ button {
   color: var(--text-muted);
 }
 
+.dash-duplicates {
+  color: var(--accent);
+}
+
 .dash-series-group {
   display: flex;
   flex-wrap: wrap;
@@ -544,8 +548,22 @@ button {
   display: block;
 }
 
-.set-logo-wrap.img-error {
+.set-logo-unavailable {
   display: none;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* Logo FR puis EN (data-fallback, voir handleDelegatedImageError) : si les deux échouent,
+   on affiche un texte plutôt que de masquer silencieusement l'extension. */
+.set-logo-wrap.img-error .set-logo {
+  display: none;
+}
+
+.set-logo-wrap.img-error .set-logo-unavailable {
+  display: inline;
 }
 
 .set-section[open] .set-chevron {
@@ -1071,16 +1089,33 @@ button {
 }
 
 .pack-icon-wrap {
+  position: relative;
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: var(--radius-sm);
   overflow: hidden;
   border: 1px solid var(--border);
+  background: var(--surface-3);
   width: 34px;
   height: 34px;
 }
 
-.pack-icon-wrap.img-error {
+.pack-icon-unavailable {
   display: none;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+/* Icône de booster introuvable : "?" plutôt qu'un vide silencieux (le nom du booster reste
+   lisible juste à côté, dans le filtre, ou via le titre au survol dans la fiche détaillée). */
+.pack-icon-wrap.img-error .pack-icon {
+  display: none;
+}
+
+.pack-icon-wrap.img-error .pack-icon-unavailable {
+  display: block;
 }
 
 .pack-icon {
@@ -1141,6 +1176,245 @@ button {
 .elem-metal { --elem-color: var(--elem-metal); }
 .elem-dragon { --elem-color: var(--elem-dragon); }
 .elem-colorless { --elem-color: var(--elem-colorless); }
+
+/* ---------- Bouton dangereux (confirmation destructive) ---------- */
+.btn-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+/* ---------- Liste de souhaits ---------- */
+.card-wishlist-btn {
+  all: unset;
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.8rem;
+  background: var(--surface-3);
+  color: var(--text-muted);
+  z-index: 2;
+}
+
+.card-wishlist-btn:hover,
+.card-wishlist-btn.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.card-wishlist-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.card.wishlisted {
+  border-color: var(--accent);
+}
+
+.view-list .card-wishlist-btn {
+  position: static;
+  margin-right: 6px;
+  background: transparent;
+}
+
+/* ---------- Pastille de quantité (doublons) ---------- */
+.qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.qty-btn {
+  all: unset;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: var(--surface-3);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.qty-btn:hover {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.qty-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.qty-value {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--owned);
+  min-width: 1.6em;
+  text-align: center;
+}
+
+/* ---------- Sélection multiple ---------- */
+.card.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.selection-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  z-index: 55;
+  font-size: 0.85rem;
+}
+
+.selection-bar[hidden] {
+  display: none;
+}
+
+/* ---------- Boîtes de dialogue (confirmation / synchronisation) ---------- */
+.confirm-dialog,
+.sync-dialog {
+  border-radius: var(--radius);
+  padding: 0;
+  color: var(--text);
+  max-width: min(90vw, 420px);
+}
+
+.confirm-dialog::backdrop,
+.sync-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.confirm-body {
+  padding: 22px;
+}
+
+.confirm-message {
+  margin: 0 0 18px;
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.sync-dialog {
+  max-width: min(90vw, 480px);
+}
+
+.sync-body {
+  padding: 22px;
+  position: relative;
+}
+
+.sync-body h3 {
+  margin: 0 0 10px;
+}
+
+.sync-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+
+.sync-link-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.sync-link-input {
+  flex: 1 1 auto;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.sync-qr {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  background: #ffffff;
+  border-radius: var(--radius-sm);
+}
+
+.sync-qr svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---------- Bannière nouvelle extension ---------- */
+.new-extension-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 203, 5, 0.14);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 0.85rem;
+}
+
+.new-extension-banner[hidden] {
+  display: none;
+}
+
+/* ---------- Mode focus ---------- */
+body.focus-mode .dashboard,
+body.focus-mode .export-reminder,
+body.focus-mode .new-extension-banner,
+body.focus-mode .toolbar-group,
+body.focus-mode .filter-panel,
+body.focus-mode .status {
+  display: none !important;
+}
+
+body.focus-mode .toolbar {
+  justify-content: flex-end;
+}
+
+body.focus-mode #search-input {
+  flex: 0 1 260px;
+}
+
+/* ---------- Accent de couleur par série (A/B/Promo), subtil sur la bordure ---------- */
+.set-section[data-series="A"] {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.set-section[data-series="B"] {
+  border-left: 3px solid color-mix(in srgb, #42a5f5 55%, var(--border));
+}
+
+.set-section[data-series="P"] {
+  border-left: 3px solid color-mix(in srgb, #ab47bc 55%, var(--border));
+}
 
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {

@@ -34,6 +34,11 @@
       <button type="button" id="export-reminder-btn" class="btn btn-tiny">Exporter maintenant</button>
     </div>
 
+    <div id="new-extension-banner" class="new-extension-banner" hidden>
+      🎉 <span id="new-extension-text"></span>
+      <button type="button" id="new-extension-dismiss" class="btn btn-tiny">OK</button>
+    </div>
+
     <div class="toolbar">
       <input
         type="search"
@@ -47,6 +52,14 @@
         <label class="checkbox-label">
           <input type="checkbox" id="only-missing" />
           Manquantes seulement
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="only-wishlist" />
+          ★ Souhaits seulement
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="only-duplicates" />
+          📦 Doublons seulement
         </label>
         <label class="checkbox-label">
           <input type="checkbox" id="hide-completed" />
@@ -81,12 +94,28 @@
         <button type="button" id="filter-toggle" class="btn btn-secondary" aria-expanded="false" aria-controls="filter-panel">
           🔎 Filtres
         </button>
+        <button type="button" id="shortcuts-help-btn" class="btn btn-secondary" aria-label="Raccourcis clavier">⌨️</button>
       </div>
+
+      <!-- Hors d'un .toolbar-group délibérément : doit rester visible même en mode focus,
+           sinon impossible de quitter ce mode sans recharger la page. -->
+      <button type="button" id="focus-mode-btn" class="btn btn-secondary focus-mode-toggle" aria-pressed="false">🎯 Mode focus</button>
 
       <div class="toolbar-group">
         <button type="button" id="refresh-btn" class="btn btn-secondary">Actualiser les données</button>
         <button type="button" id="copy-missing-btn" class="btn btn-secondary">Copier tout ce qui manque</button>
+        <button type="button" id="export-wishlist-btn" class="btn btn-secondary">★ Exporter mes souhaits</button>
+        <button type="button" id="export-duplicates-btn" class="btn btn-secondary">📦 Exporter mes doublons</button>
+        <select id="share-format-select" aria-label="Format de l'image de partage">
+          <option value="standard">Format standard</option>
+          <option value="square">Format carré (story)</option>
+          <option value="portrait">Format vertical (story)</option>
+        </select>
         <button type="button" id="share-progress-btn" class="btn btn-secondary">🏆 Partager ma progression</button>
+      </div>
+
+      <div class="toolbar-group">
+        <button type="button" id="sync-btn" class="btn btn-secondary">🔗 Synchroniser un appareil</button>
         <button type="button" id="export-btn" class="btn btn-secondary">Exporter</button>
         <label class="btn btn-secondary file-label">
           Importer
@@ -114,7 +143,16 @@
 
   <button type="button" id="back-to-top" class="back-to-top glass" aria-label="Retour en haut de page">↑</button>
 
+  <div id="selection-bar" class="selection-bar glass" hidden>
+    <span id="selection-count"></span>
+    <button type="button" id="selection-mark-owned" class="btn btn-tiny">Marquer possédées</button>
+    <button type="button" id="selection-mark-missing" class="btn btn-tiny">Marquer manquantes</button>
+    <button type="button" id="selection-clear" class="btn btn-tiny">Annuler la sélection</button>
+  </div>
+
   <dialog id="card-detail-dialog" class="card-detail-dialog glass"></dialog>
+  <dialog id="confirm-dialog" class="confirm-dialog glass"></dialog>
+  <dialog id="sync-dialog" class="sync-dialog glass"></dialog>
 
   <script src="js/api.js"></script>
   <script src="js/collection.js"></script>
@@ -123,6 +161,8 @@
   <script src="js/ui-state.js"></script>
   <script src="js/render.js"></script>
   <script src="js/share-image.js"></script>
+  <script src="js/qrcode.js"></script>
+  <script src="js/sync.js"></script>
   <script src="js/sw-register.js"></script>
   <script src="js/app.js"></script>
 </body>

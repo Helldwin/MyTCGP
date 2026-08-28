@@ -6,9 +6,14 @@ const DATA_BASE = "https://cdn.jsdelivr.net/npm/pokemon-tcg-pocket-database@late
 const EXCHANGE_BASE = "https://cdn.jsdelivr.net/gh/flibustier/pokemon-tcg-exchange@main/public/images";
 const IMAGE_BASE = `${EXCHANGE_BASE}/cards-by-set`;
 const RARITY_IMAGE_BASE = `${DATA_BASE}/images/rarities`;
-const SET_LOGO_BASE = `${EXCHANGE_BASE}/sets`;
 const PACK_IMAGE_BASE = `${EXCHANGE_BASE}/packs`;
-const CACHE_KEY = "tcgp_data_cache_v5";
+// Les logos vivent dans le dépôt Git de pokemon-tcg-pocket-database (accédé directement via
+// jsDelivr, PAS via le chemin /npm/) : le dossier dist/images/sets/ n'est pas inclus dans le
+// paquet npm publié (vérifié — 404 sur /npm/ y compris pour des sets anciens), alors qu'il
+// est bien présent dans le dépôt et à jour à chaque nouvelle extension (contrairement à
+// pokemon-tcg-exchange, qui accuse parfois un peu de retard sur les toutes dernières sorties).
+const SET_LOGO_BASE = "https://cdn.jsdelivr.net/gh/flibustier/pokemon-tcg-pocket-database@main/dist/images/sets";
+const CACHE_KEY = "tcgp_data_cache_v7";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 // Traductions FR + couleurs pour les métadonnées qui n'existent qu'en anglais dans les données.
@@ -104,12 +109,13 @@ function buildRarityMeta(rarities) {
 }
 
 async function fetchAllSetsWithCards() {
-  const [setsBySeries, frCards, enCards, extraCards, rarities] = await Promise.all([
+  const [setsBySeries, frCards, enCards, extraCards, rarities, pullRatesBySet] = await Promise.all([
     fetchJSON(`${DATA_BASE}/sets.json`),
     fetchJSON(`${DATA_BASE}/cards.fr.json`),
     fetchJSON(`${DATA_BASE}/cards.json`),
     fetchJSON(`${DATA_BASE}/cards.extra.json`),
     fetchJSON(`${DATA_BASE}/rarities.json`),
+    fetchJSON(`${DATA_BASE}/pullRates.json`).catch(() => ({})), // optionnel : sert au calculateur de boosters
   ]);
 
   const rarityMeta = buildRarityMeta(rarities);
@@ -170,6 +176,7 @@ async function fetchAllSetsWithCards() {
         packs: s.packs || [],
         logo: setLogoUrl(s.code, "fr_FR"),
         logoFallback: setLogoUrl(s.code, "en_US"),
+        pullRates: pullRatesBySet[s.code] || null,
         cards: setCards,
       });
     });

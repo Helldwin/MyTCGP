@@ -1,0 +1,14 @@
+{
+  "name": "ma-collection-tcgp",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Suivi de collection pour Pokémon TCG Pocket — site statique, sans dépendance runtime. Ce package.json ne sert qu'aux tests de développement (Playwright), pas au site déployé.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "serve": "python -m http.server 8123"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0"
+  }
+}

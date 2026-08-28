@@ -9,6 +9,8 @@ const DEFAULT_UI_STATE = {
   hideCompleted: false,
   hidePromos: true, // les extensions promo sont masquées par défaut (moins prioritaires)
   onlyMissing: false,
+  onlyWishlist: false,
+  onlyDuplicates: false,
   search: "",
   rarityGroups: [], // groupes de rareté sélectionnés ; vide = tous
   elements: [], // types d'énergie sélectionnés ; vide = tous
@@ -73,7 +75,9 @@ function hasActiveFilters() {
     uiState.elements.length > 0 ||
     uiState.categories.length > 0 ||
     Boolean(uiState.pack) ||
-    uiState.onlyMissing
+    uiState.onlyMissing ||
+    uiState.onlyWishlist ||
+    uiState.onlyDuplicates
   );
 }
 

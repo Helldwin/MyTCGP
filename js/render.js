@@ -18,6 +18,8 @@ function renderSkeletons(container, count = 15) {
 
 function cardMatchesFilters(card) {
   if (uiState.onlyMissing && isOwned(card.id)) return false;
+  if (uiState.onlyWishlist && !isWishlisted(card.id)) return false;
+  if (uiState.onlyDuplicates && getQuantity(card.id) <= 1) return false;
   if (uiState.search) {
     const needle = normalizeSearchText(uiState.search);
     if (!normalizeSearchText(card.name).includes(needle)) return false;
@@ -41,7 +43,63 @@ function isPromoSet(set) {
   return /^promo/i.test(set.id);
 }
 
+const DIAMOND_RARITY_CODES = ["C", "U", "R", "RR"];
+
+/**
+ * Estimation approximative du nombre de boosters à ouvrir pour compléter les Diamants
+ * manquants d'une extension, à partir des taux de tirage réels (pullRates.json). Hypothèse
+ * simplificatrice : répartition uniforme entre les cartes d'une même rareté, sans tenir
+ * compte des doublons déjà obtenus (donc optimiste en fin de collection) — d'où le libellé
+ * "estimation" plutôt qu'une promesse exacte.
+ */
+function estimatePacksForSet(set) {
+  if (!set.pullRates) return null;
+
+  const missingByRarity = {};
+  const totalByRarity = {};
+  set.cards.forEach((card) => {
+    const code = card.rarityCode;
+    if (!code) return;
+    totalByRarity[code] = (totalByRarity[code] || 0) + 1;
+    if (!isOwned(card.id)) missingByRarity[code] = (missingByRarity[code] || 0) + 1;
+  });
+
+  const totalMissingDiamonds = DIAMOND_RARITY_CODES.reduce((sum, code) => sum + (missingByRarity[code] || 0), 0);
+  if (totalMissingDiamonds === 0) return { totalMissingDiamonds: 0, expectedNewPerBooster: 0, estimatedBoosters: 0 };
+
+  // Probabilité moyenne, par booster ouvert, d'obtenir chaque rareté — toutes positions et
+  // tous types de boosters confondus, pondérés par leur fréquence d'apparition respective.
+  const expectedPerBoosterByRarity = {};
+  Object.values(set.pullRates).forEach((packType) => {
+    const weight = (packType.appearance_rate || 0) / 100;
+    Object.values(packType.slots || {}).forEach((slotOdds) => {
+      Object.entries(slotOdds).forEach(([code, pct]) => {
+        expectedPerBoosterByRarity[code] = (expectedPerBoosterByRarity[code] || 0) + weight * (pct / 100);
+      });
+    });
+  });
+
+  let expectedNewPerBooster = 0;
+  DIAMOND_RARITY_CODES.forEach((code) => {
+    const missing = missingByRarity[code] || 0;
+    const total = totalByRarity[code] || 0;
+    const perBooster = expectedPerBoosterByRarity[code] || 0;
+    if (missing > 0 && total > 0) expectedNewPerBooster += perBooster * (missing / total);
+  });
+
+  return {
+    totalMissingDiamonds,
+    expectedNewPerBooster,
+    estimatedBoosters: expectedNewPerBooster > 0 ? Math.ceil(totalMissingDiamonds / expectedNewPerBooster) : null,
+  };
+}
+
 /** Nombre de cartes possédées dans un set (helper réutilisé partout pour éviter la duplication). */
+/** Libellé d'une série pour le tableau de bord : "Série A"/"Série B", ou juste "Promo" pour P. */
+function seriesLabel(key) {
+  return key === "P" ? "Promo" : `Série ${key}`;
+}
+
 function ownedCountInSet(set) {
   let count = 0;
   for (const card of set.cards) {
@@ -96,6 +154,8 @@ function computeStats(sets) {
   let completedSets = 0;
   let newestSetId = null;
   let newestDate = "";
+  let duplicateCardCount = 0; // nombre de cartes DISTINCTES possédées en plusieurs exemplaires
+  let duplicateExtraCount = 0; // somme des exemplaires "en trop" (au-delà du premier)
 
   sets.forEach((set) => {
     if (set.releaseDate > newestDate) {
@@ -112,6 +172,11 @@ function computeStats(sets) {
         bySeries[seriesKey].owned++;
         const label = card.rarity ? card.rarity.groupLabel : "Autre";
         byRarityGroup[label] = (byRarityGroup[label] || 0) + 1;
+        const quantity = getQuantity(card.id);
+        if (quantity > 1) {
+          duplicateCardCount++;
+          duplicateExtraCount += quantity - 1;
+        }
       }
     });
     if (isSetComplete(set)) completedSets++;
@@ -126,6 +191,8 @@ function computeStats(sets) {
     completedSets,
     totalSets: sets.length,
     newestSetId,
+    duplicateCardCount,
+    duplicateExtraCount,
   };
 }
 
@@ -136,7 +203,7 @@ function renderDashboard(container, stats) {
       const pct = s.total ? Math.round((s.owned / s.total) * 100) : 0;
       return `
         <div class="dash-series">
-          <span class="dash-series-label">Série ${key}</span>
+          <span class="dash-series-label">${seriesLabel(key)}</span>
           <span class="set-progress-bar"><span class="set-progress-fill" style="width:${pct}%"></span></span>
           <span class="dash-series-value">${s.owned}/${s.total}</span>
         </div>`;
@@ -164,6 +231,11 @@ function renderDashboard(container, stats) {
       <div class="dash-main-text">
         <strong>${stats.totalOwned} / ${stats.totalCards}</strong> cartes possédées
         <span class="dash-sub">${stats.completedSets} / ${stats.totalSets} extensions terminées (tous les Diamants)</span>
+        ${
+          stats.duplicateCardCount > 0
+            ? `<span class="dash-sub dash-duplicates">📦 ${stats.duplicateCardCount} carte${stats.duplicateCardCount > 1 ? "s" : ""} en double (${stats.duplicateExtraCount} exemplaire${stats.duplicateExtraCount > 1 ? "s" : ""} en trop)</span>`
+            : ""
+        }
       </div>
     </div>
     <div class="dash-series-group">${seriesHtml}</div>
@@ -228,6 +300,7 @@ function renderFilterPanel(container, sets, onChange) {
       <button type="button" class="chip pack-chip" data-pack="${pack}" title="${pack}">
         <span class="pack-icon-wrap">
           <img class="pack-icon" src="${packImageUrl(pack)}" alt="" loading="lazy" decoding="async" />
+          <span class="pack-icon-unavailable" aria-hidden="true">?</span>
         </span>
         ${pack}
       </button>`
@@ -325,10 +398,26 @@ function buildCardMediaHtml(card, owned, { large = false } = {}) {
   `;
 }
 
+function buildWishlistButtonHtml(card, owned, wishlisted) {
+  if (owned) return ""; // inutile de souhaiter une carte qu'on possède déjà
+  return `<button type="button" class="card-wishlist-btn${wishlisted ? " active" : ""}" data-action="toggle-wishlist" aria-pressed="${wishlisted}" title="${wishlisted ? "Retirer de la liste de souhaits" : "Ajouter à la liste de souhaits"}">★</button>`;
+}
+
+function buildQtyStepperHtml(quantity) {
+  return `
+    <span class="qty-stepper">
+      <button type="button" class="qty-btn" data-action="qty-decrement" aria-label="Retirer un exemplaire">−</button>
+      <span class="qty-value">×${quantity}</span>
+      <button type="button" class="qty-btn" data-action="qty-increment" aria-label="Ajouter un exemplaire">+</button>
+    </span>`;
+}
+
 function renderCard(card) {
   const owned = isOwned(card.id);
+  const quantity = getQuantity(card.id);
+  const wishlisted = isWishlisted(card.id);
   const wrapper = document.createElement("div");
-  wrapper.className = `card ${owned ? "owned" : "missing"}`;
+  wrapper.className = `card ${owned ? "owned" : "missing"}${wishlisted ? " wishlisted" : ""}`;
   wrapper.dataset.cardId = card.id;
   if (card.element) wrapper.classList.add(`elem-${card.element}`);
 
@@ -339,18 +428,20 @@ function renderCard(card) {
       <span class="card-media">${buildCardMediaHtml(card, owned)}</span>
       <span class="card-badge">${owned ? "✓" : "✕"}</span>
     </button>
+    ${buildWishlistButtonHtml(card, owned, wishlisted)}
     <div class="card-footer">
       <span class="card-label-text">${card.localId} · ${card.name}</span>
       <div class="card-meta-row">
         ${rarityBadge}
+        ${owned ? buildQtyStepperHtml(quantity) : ""}
         <button type="button" class="card-info" aria-label="Détails de ${card.name}">ⓘ Détails</button>
       </div>
     </div>
   `;
 
-  // Pas d'écouteur par carte : les clics (toggle/info) et les erreurs d'image sont gérés
-  // par délégation au niveau du conteneur (voir setupDelegatedEvents dans app.js) — avec
-  // plusieurs milliers de cartes possibles, attacher 3 écouteurs à chacune coûterait cher
+  // Pas d'écouteur par carte : les clics (toggle/info/souhait/quantité) et les erreurs d'image
+  // sont gérés par délégation au niveau du conteneur (voir setupDelegatedEvents dans app.js) —
+  // avec plusieurs milliers de cartes possibles, attacher un écouteur à chacune coûterait cher
   // en mémoire et ralentirait la construction de chaque extension dépliée.
   cardElementCache.set(card.id, wrapper);
 
@@ -375,6 +466,7 @@ function renderSetSection(set, visibleCards, stats) {
   details.className = `set-section${complete ? " complete" : ""}`;
   details.open = shouldBeOpen;
   details.dataset.setId = set.id;
+  details.dataset.series = set.id.charAt(0); // accent de couleur par série (A/B/P), voir CSS
 
   const summary = document.createElement("summary");
   summary.className = "set-summary";
@@ -384,6 +476,7 @@ function renderSetSection(set, visibleCards, stats) {
       ${set.logo ? `
         <span class="set-logo-wrap">
           <img class="set-logo" src="${set.logo}" data-fallback="${set.logoFallback}" alt="" loading="lazy" decoding="async" />
+          <span class="set-logo-unavailable">Logo introuvable</span>
         </span>` : ""}
       <span class="set-title">
         ${set.name}
@@ -407,6 +500,7 @@ function renderSetSection(set, visibleCards, stats) {
     <button type="button" class="btn btn-tiny" data-action="mark-all-owned">Tout marquer possédé</button>
     <button type="button" class="btn btn-tiny" data-action="mark-all-missing">Tout marquer manquant</button>
     <button type="button" class="btn btn-tiny" data-action="missing-image">🖼️ Image des manquantes</button>
+    <button type="button" class="btn btn-tiny" data-action="pack-calc">🎲 Estimation boosters</button>
   `;
   body.appendChild(actions);
 
@@ -453,8 +547,13 @@ function patchCardDOM(card) {
   const el = cardElementCache.get(card.id);
   if (!el || !el.isConnected) return;
   const owned = isOwned(card.id);
+  const quantity = getQuantity(card.id);
+  const wishlisted = isWishlisted(card.id);
+
   el.classList.toggle("owned", owned);
   el.classList.toggle("missing", !owned);
+  el.classList.toggle("wishlisted", wishlisted);
+
   const toggleBtn = el.querySelector(".card-toggle");
   toggleBtn.setAttribute("aria-pressed", String(owned));
   toggleBtn.title = owned ? "Retirer de la collection" : "Ajouter à la collection";
@@ -465,6 +564,39 @@ function patchCardDOM(card) {
   const media = el.querySelector(".card-media");
   media.classList.remove("img-error");
   media.innerHTML = buildCardMediaHtml(card, owned);
+
+  // Bouton liste de souhaits : n'existe que pour une carte manquante, à créer/retirer selon.
+  let wishlistBtn = el.querySelector(".card-wishlist-btn");
+  if (!owned) {
+    if (!wishlistBtn) {
+      wishlistBtn = document.createElement("button");
+      wishlistBtn.type = "button";
+      wishlistBtn.className = "card-wishlist-btn";
+      wishlistBtn.dataset.action = "toggle-wishlist";
+      el.insertBefore(wishlistBtn, el.querySelector(".card-footer"));
+    }
+    wishlistBtn.classList.toggle("active", wishlisted);
+    wishlistBtn.setAttribute("aria-pressed", String(wishlisted));
+    wishlistBtn.title = wishlisted ? "Retirer de la liste de souhaits" : "Ajouter à la liste de souhaits";
+    wishlistBtn.textContent = "★";
+  } else if (wishlistBtn) {
+    wishlistBtn.remove();
+  }
+
+  // Pastille de quantité : n'existe que pour une carte possédée, à créer/retirer selon.
+  const metaRow = el.querySelector(".card-meta-row");
+  let qtyStepper = el.querySelector(".qty-stepper");
+  if (owned) {
+    if (!qtyStepper) {
+      const template = document.createElement("div");
+      template.innerHTML = buildQtyStepperHtml(quantity).trim();
+      qtyStepper = template.firstElementChild;
+      metaRow.insertBefore(qtyStepper, metaRow.querySelector(".card-info"));
+    }
+    qtyStepper.querySelector(".qty-value").textContent = `×${quantity}`;
+  } else if (qtyStepper) {
+    qtyStepper.remove();
+  }
 }
 
 /**
@@ -639,6 +771,7 @@ function openCardDetail(card) {
                     (pack) => `
                     <span class="pack-icon-wrap" title="${pack}">
                       <img class="pack-icon" src="${packImageUrl(pack)}" alt="${pack}" loading="lazy" decoding="async" />
+                      <span class="pack-icon-unavailable" aria-hidden="true">?</span>
                     </span>`
                   )
                   .join("")}

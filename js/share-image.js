@@ -44,6 +44,25 @@ function truncateText(text, maxChars) {
   return text.length > maxChars ? `${text.slice(0, maxChars - 1)}…` : text;
 }
 
+/** Écrit un texte sur plusieurs lignes si besoin, en revenant à la ligne au dernier mot qui tient. */
+function wrapFillText(ctx, text, x, y, maxWidth, lineHeight) {
+  const words = text.split(" ");
+  let line = "";
+  let lineY = y;
+  words.forEach((word, index) => {
+    const candidate = line ? `${line} ${word}` : word;
+    if (ctx.measureText(candidate).width > maxWidth && line) {
+      ctx.fillText(line, x, lineY);
+      line = word;
+      lineY += lineHeight;
+    } else {
+      line = candidate;
+    }
+    if (index === words.length - 1) ctx.fillText(line, x, lineY);
+  });
+  return lineY;
+}
+
 function canvasToPngBlob(canvas) {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Échec de la génération du PNG."))), "image/png");
@@ -161,30 +180,55 @@ async function generateMissingCardsImage(set) {
   }
 }
 
+// Dimensions/typographie par format d'export. "standard" garde la taille auto d'origine
+// (largeur dictée par le contenu) ; les formats "story" visent une taille fixe 1080px de large,
+// pensée pour être partagée telle quelle sur Instagram/Snapchat.
+const SHARE_FORMATS = {
+  standard: { width: null, height: null, columns: 5, cellWidth: 184, cellHeight: 108, margin: 28, headerHeight: 150, titleFont: 26, bigFont: 44, subFont: 18 },
+  square: { width: 1080, height: 1080, columns: 5, cellWidth: null, cellHeight: null, margin: 40, headerHeight: 230, titleFont: 40, bigFont: 74, subFont: 24 },
+  portrait: { width: 1080, height: 1920, columns: 4, cellWidth: null, cellHeight: null, margin: 44, headerHeight: 260, titleFont: 42, bigFont: 82, subFont: 26 },
+};
+
 /**
  * Génère une image de partage de la progression globale — un peu comme un tableau de badges :
  * une pastille par extension (logo, colorée si "Terminée", grisée sinon), plus les stats
- * globales et par série — puis déclenche son téléchargement.
+ * globales et par série — puis déclenche son téléchargement. `format` : "standard" (défaut),
+ * "square" (1080×1080) ou "portrait" (1080×1920), pensés pour les stories.
  */
-async function generateProgressShareImage(sets, stats) {
+async function generateProgressShareImage(sets, stats, { format = "standard" } = {}) {
   const dismissLoading = showToast("Génération de l'image de progression…", { duration: 45000 });
 
   try {
+    const cfg = SHARE_FORMATS[format] || SHARE_FORMATS.standard;
     const badgeSets = sets.filter((set) => !isPromoSet(set));
-    const columns = 5;
-    const cellWidth = 184;
-    const cellHeight = 108;
+    const columns = cfg.columns;
     const gap = 14;
-    const margin = 28;
+    const margin = cfg.margin;
     const rows = Math.ceil(badgeSets.length / columns);
-    const headerHeight = 150;
-    const badgesHeight = rows * cellHeight + Math.max(0, rows - 1) * gap;
+    const headerHeight = cfg.headerHeight;
 
     const rarityEntries = Object.entries(stats.byRarityGroup);
-    const footerHeight = 60 + Object.keys(stats.bySeries).length * 26 + rarityEntries.length * 22 + 40;
+    const seriesCount = Object.keys(stats.bySeries).length;
 
-    const width = margin * 2 + columns * cellWidth + (columns - 1) * gap;
-    const height = headerHeight + margin + badgesHeight + margin + footerHeight;
+    let width, height, cellWidth, cellHeight, footerHeight, badgesHeight;
+
+    if (cfg.width) {
+      // Formats fixes (story) : la hauteur des pastilles s'adapte pour tout faire tenir.
+      width = cfg.width;
+      height = cfg.height;
+      cellWidth = (width - margin * 2 - (columns - 1) * gap) / columns;
+      footerHeight = 60 + seriesCount * (cfg.subFont + 12) + rarityEntries.length * (cfg.subFont) + 50;
+      const available = height - headerHeight - margin * 2 - footerHeight;
+      cellHeight = Math.max(70, (available - Math.max(0, rows - 1) * gap) / rows);
+      badgesHeight = rows * cellHeight + Math.max(0, rows - 1) * gap;
+    } else {
+      cellWidth = cfg.cellWidth;
+      cellHeight = cfg.cellHeight;
+      badgesHeight = rows * cellHeight + Math.max(0, rows - 1) * gap;
+      footerHeight = 60 + seriesCount * 26 + rarityEntries.length * 22 + 40;
+      width = margin * 2 + columns * cellWidth + (columns - 1) * gap;
+      height = headerHeight + margin + badgesHeight + margin + footerHeight;
+    }
 
     const logos = await Promise.all(
       badgeSets.map((set) => loadImageOrNull(set.logo).then((img) => img || loadImageOrNull(set.logoFallback)))
@@ -203,19 +247,23 @@ async function generateProgressShareImage(sets, stats) {
 
     ctx.textAlign = "left";
     ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 26px 'Segoe UI', sans-serif";
-    ctx.fillText("Ma collection Pokémon TCG Pocket", margin, 46);
+    ctx.font = `bold ${cfg.titleFont}px 'Segoe UI', sans-serif`;
+    ctx.fillText("Ma collection Pokémon TCG Pocket", margin, margin + cfg.titleFont);
 
-    ctx.font = "bold 44px 'Segoe UI', sans-serif";
+    ctx.font = `bold ${cfg.bigFont}px 'Segoe UI', sans-serif`;
     ctx.fillStyle = "#ffcb05";
-    ctx.fillText(`${stats.totalOwned} / ${stats.totalCards}`, margin, 100);
+    const bigY = margin + cfg.titleFont + cfg.bigFont + 14;
+    ctx.fillText(`${stats.totalOwned} / ${stats.totalCards}`, margin, bigY);
 
-    ctx.font = "18px 'Segoe UI', sans-serif";
+    ctx.font = `${cfg.subFont}px 'Segoe UI', sans-serif`;
     ctx.fillStyle = "#9aa0b4";
-    ctx.fillText(
+    wrapFillText(
+      ctx,
       `cartes possédées (${stats.pct}%) — ${stats.completedSets} / ${badgeSets.length} extensions terminées (tous les Diamants)`,
       margin,
-      130
+      bigY + cfg.subFont + 14,
+      width - margin * 2,
+      cfg.subFont + 6
     );
 
     badgeSets.forEach((set, index) => {
@@ -256,28 +304,29 @@ async function generateProgressShareImage(sets, stats) {
       ctx.fillText(complete ? `✓ Terminée` : `${owned} / ${total}`, x + cellWidth / 2, y + cellHeight - 12);
     });
 
-    let ly = headerHeight + margin + badgesHeight + margin + 26;
+    const footerLineHeight = cfg.subFont + 12;
+    let ly = headerHeight + margin + badgesHeight + margin + cfg.subFont + 4;
     ctx.textAlign = "left";
-    ctx.font = "bold 15px 'Segoe UI', sans-serif";
+    ctx.font = `bold ${cfg.subFont}px 'Segoe UI', sans-serif`;
     ctx.fillStyle = "#eef0f6";
     Object.entries(stats.bySeries)
       .sort(([a], [b]) => a.localeCompare(b))
       .forEach(([key, s]) => {
         const pct = s.total ? Math.round((s.owned / s.total) * 100) : 0;
-        ctx.fillText(`Série ${key} : ${s.owned} / ${s.total} (${pct}%)`, margin, ly);
-        ly += 26;
+        ctx.fillText(`${seriesLabel(key)} : ${s.owned} / ${s.total} (${pct}%)`, margin, ly);
+        ly += footerLineHeight;
       });
 
     ly += 8;
-    ctx.font = "13px 'Segoe UI', sans-serif";
+    ctx.font = `${Math.round(cfg.subFont * 0.85)}px 'Segoe UI', sans-serif`;
     ctx.fillStyle = "#9aa0b4";
     rarityEntries.forEach(([label, count]) => {
       ctx.fillText(`${label} : ${count} cartes possédées`, margin, ly);
-      ly += 22;
+      ly += Math.round(cfg.subFont * 0.85) + 8;
     });
 
     ctx.textAlign = "right";
-    ctx.font = "12px 'Segoe UI', sans-serif";
+    ctx.font = `${Math.round(cfg.subFont * 0.7)}px 'Segoe UI', sans-serif`;
     ctx.fillStyle = "#5b6072";
     ctx.fillText(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, width - margin, height - 18);
 
@@ -285,6 +334,221 @@ async function generateProgressShareImage(sets, stats) {
     downloadBlob(blob, `ma-progression-tcgp-${new Date().toISOString().slice(0, 10)}.png`);
     dismissLoading();
     showToast("Image de progression téléchargée.");
+  } catch (err) {
+    console.error(err);
+    dismissLoading();
+    showToast("Impossible de générer l'image.");
+  }
+}
+
+/**
+ * Génère un PNG listant toutes les cartes de la liste de souhaits (potentiellement réparties
+ * sur plusieurs extensions) — image, numéro, nom et code de l'extension pour chaque carte.
+ */
+async function generateWishlistImage(sets) {
+  const wishlistCards = getWishlistIds()
+    .map((id) => sets.flatMap((set) => set.cards).find((card) => card.id === id))
+    .filter(Boolean);
+
+  if (wishlistCards.length === 0) {
+    showToast("Ta liste de souhaits est vide : clique sur ★ sur une carte manquante pour l'ajouter.");
+    return;
+  }
+
+  const dismissLoading = showToast(`Génération de l'image (${wishlistCards.length} souhaits)…`, { duration: 45000 });
+
+  try {
+    const columns = Math.min(12, Math.max(5, Math.ceil(Math.sqrt(wishlistCards.length * 1.4))));
+    const cellWidth = 82;
+    const cardHeight = Math.round(cellWidth * (337 / 245));
+    const labelHeight = 30;
+    const cellHeight = cardHeight + labelHeight;
+    const gap = 10;
+    const margin = 22;
+    const rows = Math.ceil(wishlistCards.length / columns);
+    const headerHeight = 80;
+
+    const width = margin * 2 + columns * cellWidth + (columns - 1) * gap;
+    const height = headerHeight + margin + rows * cellHeight + (rows - 1) * gap + margin;
+
+    const cardImages = await Promise.all(wishlistCards.map((card) => loadImageOrNull(card.thumb || card.image)));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+
+    ctx.fillStyle = "#f5f6fa";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#12141c";
+    ctx.fillRect(0, 0, width, headerHeight);
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 24px 'Segoe UI', sans-serif";
+    ctx.fillText("★ Ma liste de souhaits", margin, headerHeight / 2 - 2);
+    ctx.font = "14px 'Segoe UI', sans-serif";
+    ctx.fillStyle = "#ffcb05";
+    ctx.fillText(
+      `${wishlistCards.length} carte${wishlistCards.length > 1 ? "s" : ""} recherchée${wishlistCards.length > 1 ? "s" : ""}`,
+      margin,
+      headerHeight / 2 + 20
+    );
+
+    wishlistCards.forEach((card, index) => {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      const x = margin + col * (cellWidth + gap);
+      const y = headerHeight + margin + row * (cellHeight + gap);
+
+      const img = cardImages[index];
+      if (img) {
+        ctx.save();
+        drawRoundedRectPath(ctx, x, y, cellWidth, cardHeight, 6);
+        ctx.clip();
+        drawImageContain(ctx, img, x, y, cellWidth, cardHeight);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = "#e6e8f0";
+        drawRoundedRectPath(ctx, x, y, cellWidth, cardHeight, 6);
+        ctx.fill();
+        ctx.fillStyle = "#5b6072";
+        ctx.textAlign = "center";
+        ctx.font = "bold 15px 'Segoe UI', sans-serif";
+        ctx.fillText(formatCardNumber(card.localId), x + cellWidth / 2, y + cardHeight / 2 + 5);
+      }
+      ctx.strokeStyle = "#dcdfe8";
+      ctx.lineWidth = 1;
+      drawRoundedRectPath(ctx, x, y, cellWidth, cardHeight, 6);
+      ctx.stroke();
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#1b1e2a";
+      ctx.font = "bold 10px 'Segoe UI', sans-serif";
+      ctx.fillText(`${card.id}`, x + cellWidth / 2, y + cardHeight + 14);
+      ctx.fillStyle = "#5b6072";
+      ctx.font = "10px 'Segoe UI', sans-serif";
+      ctx.fillText(truncateText(card.name, 15), x + cellWidth / 2, y + cardHeight + 28);
+    });
+
+    const blob = await canvasToPngBlob(canvas);
+    downloadBlob(blob, `ma-liste-de-souhaits-tcgp-${new Date().toISOString().slice(0, 10)}.png`);
+    dismissLoading();
+    showToast("Image téléchargée.");
+  } catch (err) {
+    console.error(err);
+    dismissLoading();
+    showToast("Impossible de générer l'image.");
+  }
+}
+
+/**
+ * Génère un PNG listant les cartes possédées en plusieurs exemplaires — image, numéro, nom et
+ * nombre d'exemplaires "en trop" (au-delà du premier, gardé pour soi) — utile pour proposer un
+ * échange.
+ */
+async function generateDuplicatesImage(sets) {
+  const duplicateCards = sets
+    .flatMap((set) => set.cards)
+    .filter((card) => getQuantity(card.id) > 1);
+
+  if (duplicateCards.length === 0) {
+    showToast("Aucun doublon pour l'instant : tu ne possèdes chaque carte qu'en un seul exemplaire.");
+    return;
+  }
+
+  const dismissLoading = showToast(`Génération de l'image (${duplicateCards.length} doublons)…`, { duration: 45000 });
+
+  try {
+    const columns = Math.min(12, Math.max(5, Math.ceil(Math.sqrt(duplicateCards.length * 1.4))));
+    const cellWidth = 82;
+    const cardHeight = Math.round(cellWidth * (337 / 245));
+    const labelHeight = 30;
+    const cellHeight = cardHeight + labelHeight;
+    const gap = 10;
+    const margin = 22;
+    const rows = Math.ceil(duplicateCards.length / columns);
+    const headerHeight = 80;
+
+    const width = margin * 2 + columns * cellWidth + (columns - 1) * gap;
+    const height = headerHeight + margin + rows * cellHeight + (rows - 1) * gap + margin;
+
+    const cardImages = await Promise.all(duplicateCards.map((card) => loadImageOrNull(card.thumb || card.image)));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+
+    ctx.fillStyle = "#f5f6fa";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#12141c";
+    ctx.fillRect(0, 0, width, headerHeight);
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 24px 'Segoe UI', sans-serif";
+    ctx.fillText("📦 Mes doublons à échanger", margin, headerHeight / 2 - 2);
+    ctx.font = "14px 'Segoe UI', sans-serif";
+    ctx.fillStyle = "#ffcb05";
+    ctx.fillText(
+      `${duplicateCards.length} carte${duplicateCards.length > 1 ? "s" : ""} en double`,
+      margin,
+      headerHeight / 2 + 20
+    );
+
+    duplicateCards.forEach((card, index) => {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      const x = margin + col * (cellWidth + gap);
+      const y = headerHeight + margin + row * (cellHeight + gap);
+      const extra = getQuantity(card.id) - 1;
+
+      const img = cardImages[index];
+      if (img) {
+        ctx.save();
+        drawRoundedRectPath(ctx, x, y, cellWidth, cardHeight, 6);
+        ctx.clip();
+        drawImageContain(ctx, img, x, y, cellWidth, cardHeight);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = "#e6e8f0";
+        drawRoundedRectPath(ctx, x, y, cellWidth, cardHeight, 6);
+        ctx.fill();
+        ctx.fillStyle = "#5b6072";
+        ctx.textAlign = "center";
+        ctx.font = "bold 15px 'Segoe UI', sans-serif";
+        ctx.fillText(formatCardNumber(card.localId), x + cellWidth / 2, y + cardHeight / 2 + 5);
+      }
+      ctx.strokeStyle = "#dcdfe8";
+      ctx.lineWidth = 1;
+      drawRoundedRectPath(ctx, x, y, cellWidth, cardHeight, 6);
+      ctx.stroke();
+
+      // Pastille "×N en trop" en haut à droite de la vignette.
+      ctx.fillStyle = "#ffcb05";
+      drawRoundedRectPath(ctx, x + cellWidth - 26, y + 4, 22, 16, 8);
+      ctx.fill();
+      ctx.fillStyle = "#12141c";
+      ctx.textAlign = "center";
+      ctx.font = "bold 10px 'Segoe UI', sans-serif";
+      ctx.fillText(`+${extra}`, x + cellWidth - 15, y + 15);
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#1b1e2a";
+      ctx.font = "bold 10px 'Segoe UI', sans-serif";
+      ctx.fillText(`${card.id}`, x + cellWidth / 2, y + cardHeight + 14);
+      ctx.fillStyle = "#5b6072";
+      ctx.font = "10px 'Segoe UI', sans-serif";
+      ctx.fillText(truncateText(card.name, 15), x + cellWidth / 2, y + cardHeight + 28);
+    });
+
+    const blob = await canvasToPngBlob(canvas);
+    downloadBlob(blob, `mes-doublons-tcgp-${new Date().toISOString().slice(0, 10)}.png`);
+    dismissLoading();
+    showToast("Image téléchargée.");
   } catch (err) {
     console.error(err);
     dismissLoading();
