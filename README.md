@@ -30,7 +30,7 @@ js/
   render.js       # construction du DOM (tableau de bord, sections, cartes, fiche détail)
   app.js          # orchestration : chargement des données, wiring des événements
   sw-register.js  # enregistrement du service worker
-service-worker.js  # coquille en cache + données en network-first (PWA hors-ligne)
+service-worker.js  # tout en network-first, repli sur le cache si hors-ligne (PWA)
 manifest.webmanifest
 icons/            # icônes PWA (SVG)
 ```
@@ -54,14 +54,13 @@ puis aller sur `http://localhost:8000`.
 5. Sauvegarder — le site sera disponible sous `https://<utilisateur>.github.io/<repo>/` après
    quelques minutes.
 
-### Important : mettre à jour le service worker à chaque déploiement notable
+### Mise en cache du service worker
 
-Le service worker (`service-worker.js`) met en cache la coquille applicative (HTML/CSS/JS)
-pour permettre le fonctionnement hors-ligne. Si tu modifies ces fichiers et redéploies sans
-rien changer d'autre, les visiteurs qui ont déjà installé le site continueront de voir
-l'ancienne version tant que le cache n'est pas invalidé. Pour forcer la mise à jour,
-incrémente la constante `CACHE_NAME` en haut de `service-worker.js` (ex. `tcgp-shell-v1` →
-`tcgp-shell-v2`) avant de déployer.
+Le service worker (`service-worker.js`) sert tout en **network-first** : tant qu'il y a du
+réseau, un visiteur reçoit toujours la dernière version déployée (HTML/CSS/JS + données de
+cartes) ; le cache ne sert que de repli quand il est hors-ligne. Pas besoin d'incrémenter
+`CACHE_NAME` à chaque déploiement — seulement si un cache existant chez des visiteurs doit être
+purgé explicitement (ex. après un bug qui aurait mis en cache une réponse cassée).
 
 ## Sauvegarder sa collection
 

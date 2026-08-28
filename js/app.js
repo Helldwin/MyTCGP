@@ -20,6 +20,7 @@ const els = {
   exportBtn: document.getElementById("export-btn"),
   importInput: document.getElementById("import-input"),
   copyMissingBtn: document.getElementById("copy-missing-btn"),
+  shareProgressBtn: document.getElementById("share-progress-btn"),
   status: document.getElementById("status"),
   backToTop: document.getElementById("back-to-top"),
   exportReminder: document.getElementById("export-reminder"),
@@ -273,6 +274,8 @@ els.importInput.addEventListener("change", async (event) => {
 
 els.copyMissingBtn.addEventListener("click", () => copyMissingToClipboard(state.sets));
 
+els.shareProgressBtn.addEventListener("click", () => generateProgressShareImage(state.sets, computeStats(state.sets)));
+
 /**
  * Délégation d'événements pour tout le contenu des extensions (clic toggle/info, actions
  * groupées, erreur d'image). Avec potentiellement des milliers de cartes, attacher un
@@ -324,8 +327,8 @@ function setupDelegatedEvents() {
       if (!set) return;
       if (actionBtn.dataset.action === "mark-all-owned") handleBulkMark(set, true);
       else if (actionBtn.dataset.action === "mark-all-missing") handleBulkMark(set, false);
-      else if (actionBtn.dataset.action === "copy-missing") copyMissingToClipboard([set]);
       else if (actionBtn.dataset.action === "mark-tier") handleTierMark(set, actionBtn.dataset.tierGroup);
+      else if (actionBtn.dataset.action === "missing-image") generateMissingCardsImage(set);
     }
   });
 

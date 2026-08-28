@@ -406,7 +406,7 @@ function renderSetSection(set, visibleCards, stats) {
   actions.innerHTML = `
     <button type="button" class="btn btn-tiny" data-action="mark-all-owned">Tout marquer possédé</button>
     <button type="button" class="btn btn-tiny" data-action="mark-all-missing">Tout marquer manquant</button>
-    <button type="button" class="btn btn-tiny" data-action="copy-missing">Copier les manquantes</button>
+    <button type="button" class="btn btn-tiny" data-action="missing-image">🖼️ Image des manquantes</button>
   `;
   body.appendChild(actions);
 

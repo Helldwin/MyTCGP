@@ -1,10 +1,15 @@
-// Service worker : coquille applicative en cache (cache-first) pour fonctionner hors-ligne,
-// données de cartes en network-first (fraîcheur si en ligne, repli sur le cache sinon).
+// Service worker : network-first pour tout (coquille applicative ET données de cartes), avec
+// repli sur le cache uniquement si hors-ligne. On a délibérément écarté le cache-first pour la
+// coquille : ce site est encore en évolution active, et le cache-first laissait les visiteurs
+// déjà installés bloqués sur d'anciennes versions du HTML/CSS/JS tant qu'on ne pensait pas à
+// incrémenter CACHE_NAME à chaque déploiement — ce qui est arrivé plusieurs fois. Avec
+// network-first, tant qu'il y a du réseau, le visiteur a toujours la dernière version ; le
+// cache ne sert que de repli hors-ligne.
 //
-// IMPORTANT : incrémenter CACHE_NAME (ex. "tcgp-shell-v2") à chaque déploiement qui change
-// le HTML/CSS/JS, sinon les visiteurs déjà installés continueront de voir l'ancienne version
-// tant que le cache n'est pas invalidé (voir README).
-const CACHE_NAME = "tcgp-shell-v1";
+// CACHE_NAME reste à incrémenter (ex. "tcgp-shell-v3") après un déploiement qui casse quelque
+// chose et nécessite de purger un cache déjà corrompu chez les visiteurs — plus une nécessité
+// systématique à chaque changement mineur.
+const CACHE_NAME = "tcgp-shell-v3";
 
 const APP_SHELL = [
   "./",
@@ -17,6 +22,7 @@ const APP_SHELL = [
   "js/toast.js",
   "js/ui-state.js",
   "js/render.js",
+  "js/share-image.js",
   "js/app.js",
   "js/sw-register.js",
   "icons/icon.svg",
@@ -41,17 +47,6 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-const DATA_HOSTS = new Set(["cdn.jsdelivr.net"]);
-
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
-  const response = await fetch(request);
-  const cache = await caches.open(CACHE_NAME);
-  cache.put(request, response.clone());
-  return response;
-}
-
 async function networkFirst(request) {
   const cache = await caches.open(CACHE_NAME);
   try {
@@ -67,14 +62,5 @@ async function networkFirst(request) {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-  const url = new URL(event.request.url);
-
-  if (DATA_HOSTS.has(url.hostname)) {
-    event.respondWith(networkFirst(event.request));
-    return;
-  }
-
-  if (url.origin === self.location.origin) {
-    event.respondWith(cacheFirst(event.request));
-  }
+  event.respondWith(networkFirst(event.request));
 });
