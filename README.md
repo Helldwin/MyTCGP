@@ -9,24 +9,40 @@ uniquement dans le `localStorage` de ton navigateur (aucun compte, aucun serveur
 
 - **Suivi de collection** : possédé/manquant, quantité d'exemplaires (doublons pour l'échange —
   filtre dédié, export PNG, compteur dans le tableau de bord), liste de souhaits sur les cartes
-  manquantes ciblées en priorité (même trio filtre/export/suivi).
+  manquantes ciblées en priorité (même trio filtre/export/suivi), note personnelle libre sur
+  n'importe quelle carte (ex. "à échanger contre X" — pastille 📝 dans la grille).
 - **Paliers de complétion** par rareté (Diamant/Étoile/Brillante/Couronne) — "Terminée" veut dire
   "tous les Diamants obtenus", pas nécessairement 100% (les raretés au-dessus sont très
   difficiles à obtenir). Chaque palier est cliquable pour tout marquer/démarquer d'un coup.
-- **Filtres** : rareté, type d'énergie, catégorie, booster, recherche (insensible aux accents),
-  masquer les extensions complètes, masquer les promos (par défaut).
+  Badge "🔥 Plus que N" quand une extension est à 1-3 Diamants de la complétion.
+- **Filtres et recherche** : rareté, type d'énergie, catégorie, booster, recherche par nom ou par
+  numéro de carte (insensible aux accents), masquer les extensions complètes, masquer les promos
+  (par défaut). Depuis la fiche d'une carte, un clic sur son nom relance la recherche pour
+  retrouver toutes ses variantes. Liste de saut rapide pour atteindre directement une extension.
 - **Sélection multiple** : Maj+clic pour une plage de cartes, Ctrl/Cmd+clic pour une carte,
   actions groupées sur la sélection.
+- **Vues d'affichage** : grille, liste compacte, et vue "compact" (miniatures seules, sans texte)
+  pour scanner un maximum de cartes d'un coup d'œil.
 - **Images à télécharger** : liste illustrée des cartes manquantes d'une extension (logo +
-  vignettes + numéros), liste de souhaits illustrée, et image de partage de la progression
-  globale façon "tableau de badges" (formats standard, carré et vertical pour les stories).
+  vignettes + numéros), liste de souhaits illustrée, liste d'échange combinant doublons et
+  souhaits en une image, et image de partage de la progression globale façon "tableau de badges"
+  (formats standard, carré et vertical pour les stories). Export PDF/impression de la liste des
+  manquantes (via l'impression du navigateur — "Enregistrer en PDF").
 - **Calculateur de boosters** : estimation du nombre de boosters à ouvrir pour compléter les
-  Diamants manquants d'une extension, à partir des taux de tirage réels du jeu.
+  Diamants manquants d'une extension, à partir des taux de tirage réels du jeu — comparaison
+  booster par booster quand une extension en propose plusieurs, pour savoir lequel prioriser.
+- **Échanges entre joueurs** : comparateur de collection (importer l'export d'un ami pour voir
+  qui a quoi et préparer un échange), lien de partage de liste de souhaits en lecture seule
+  (contrairement à la synchronisation, ne touche jamais à la collection du destinataire — signale
+  au passage les cartes qu'on pourrait donner en échange).
 - **Synchronisation entre appareils** via un lien compact (+ QR code), sans compte ni serveur —
-  la collection est compressée et encodée directement dans l'URL.
+  la collection est compressée et encodée directement dans l'URL en un format binaire compact
+  (tient dans un QR code même pour une collection presque complète).
 - **Mode focus**, raccourcis clavier (`/` recherche, `Échap` ferme/annule), thème clair/sombre,
-  bannière "nouvelle extension disponible".
-- Installable et utilisable hors-ligne après une première visite (PWA, network-first).
+  bannière "nouvelle extension disponible", rappel d'export (bannière + notification locale
+  optionnelle, à l'ouverture de l'appli — pas de push serveur possible sans backend).
+- Installable et utilisable hors-ligne après une première visite (PWA, network-first),
+  entièrement adapté au mobile (barre d'outils repliable, feuille de filtres plein écran).
 
 ## Sources de données
 
@@ -116,5 +132,9 @@ Le `localStorage` est propre à un navigateur/appareil. Trois façons de transf�
 - **Export/Import** : bouton **Exporter** (télécharge un `.json`), bouton **Importer** pour le
   recharger. Une bannière de rappel s'affiche si aucun export n'a été fait depuis plus de 7 jours.
 - **Lien de synchronisation** (bouton **🔗 Synchroniser un appareil**) : génère un lien compact
-  (+ QR code si la collection est assez petite) à ouvrir sur l'autre appareil. Rien ne transite
-  par un serveur — la collection est encodée directement dans l'URL.
+  (+ QR code) à ouvrir sur l'autre appareil — remplace sa collection actuelle. Rien ne transite
+  par un serveur, tout est encodé directement dans l'URL (bitmap positionnel par extension,
+  compressé — reste largement sous la capacité d'un QR code même à 100% de complétion).
+- **Lien de partage de liste de souhaits** (bouton **🔗 Partager ma liste de souhaits**) : même
+  principe, mais en lecture seule — le destinataire voit la liste sans que ça touche à sa propre
+  collection, et voit quelles cartes il pourrait donner en échange (celles qu'il a en double).

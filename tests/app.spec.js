@@ -61,10 +61,12 @@ test.describe("Collection", () => {
 
     await expect(page.locator(".dash-duplicates")).toContainText("1 carte en double");
 
+    await page.click("#filter-toggle");
     await page.check("#only-duplicates");
     await expect(page.locator(".card")).toHaveCount(1);
     await page.uncheck("#only-duplicates");
 
+    await page.click("#toolbar-more-toggle");
     const downloadPromise = page.waitForEvent("download");
     await page.click("#export-duplicates-btn");
     const download = await downloadPromise;
@@ -89,10 +91,12 @@ test.describe("Collection", () => {
     await page.locator(".set-section summary").first().click();
     await page.locator(".card").nth(1).locator(".card-wishlist-btn").click();
 
+    await page.click("#filter-toggle");
     await page.check("#only-wishlist");
     await expect(page.locator(".card")).toHaveCount(1);
     await page.uncheck("#only-wishlist");
 
+    await page.click("#toolbar-more-toggle");
     const downloadPromise = page.waitForEvent("download");
     await page.click("#export-wishlist-btn");
     const download = await downloadPromise;
@@ -111,6 +115,7 @@ test.describe("Filtres et recherche", () => {
 
   test("masquer les promos les cache par défaut, les affiche si décoché", async ({ page }) => {
     await freshVisit(page);
+    await page.click("#filter-toggle");
     await expect(page.locator("#hide-promos")).toBeChecked();
     await expect(page.locator('.set-section[data-set-id="PROMO-A"]')).toHaveCount(0);
     await page.uncheck("#hide-promos");
@@ -134,6 +139,7 @@ test.describe("Export / import / synchronisation", () => {
     await page.locator(".set-section summary").first().click();
     await page.locator(".card").first().locator(".card-toggle").click();
 
+    await page.click("#toolbar-more-toggle");
     const downloadPromise = page.waitForEvent("download");
     await page.click("#export-btn");
     const download = await downloadPromise;
@@ -143,6 +149,7 @@ test.describe("Export / import / synchronisation", () => {
     await page.reload({ waitUntil: "networkidle" });
     await expect(page.locator(".dash-main-text")).toContainText("0 / 3879");
 
+    await page.click("#toolbar-more-toggle");
     await page.setInputFiles("#import-input", filePath);
     await expect(page.locator(".dash-main-text")).toContainText("1 / 3879");
   });
@@ -156,6 +163,7 @@ test.describe("Export / import / synchronisation", () => {
       render();
     });
 
+    await page.click("#toolbar-more-toggle");
     await page.click("#sync-btn");
     await expect(page.locator("#sync-link-input")).toBeVisible({ timeout: 10000 });
     const url = await page.inputValue("#sync-link-input");
@@ -177,6 +185,7 @@ test.describe("Export / import / synchronisation", () => {
       });
     });
 
+    await page.click("#toolbar-more-toggle");
     await page.click("#sync-btn");
     await expect(page.locator("#sync-link-input")).toBeVisible({ timeout: 10000 });
     await expect(page.locator(".sync-qr")).toBeVisible();
@@ -206,5 +215,143 @@ test.describe("PWA", () => {
     await page.waitForTimeout(1500);
     await expect(page.locator(".set-section")).toHaveCount(21); // promos masquées par défaut
     await context.setOffline(false);
+  });
+});
+
+test.describe("Recherche et navigation", () => {
+  test("la recherche trouve aussi une carte par son numéro", async ({ page }) => {
+    await freshVisit(page);
+    await page.fill("#search-input", "001");
+    await page.waitForTimeout(300);
+    const count = await page.locator(".card").count();
+    expect(count).toBeGreaterThan(0);
+    const labels = await page.locator(".card-label-text").allTextContents();
+    expect(labels.every((label) => label.startsWith("1 ·"))).toBe(true);
+  });
+
+  test("cliquer le nom d'une carte dans sa fiche relance la recherche sur ce nom", async ({ page }) => {
+    await freshVisit(page);
+    await page.locator(".set-section summary").first().click();
+    await page.locator(".card").first().locator(".card-info").click();
+    const name = await page.locator("#card-detail-search-name").innerText();
+    await page.click("#card-detail-search-name");
+    await expect(page.locator("#search-input")).toHaveValue(name);
+  });
+
+  test("la liste de saut rapide ouvre directement l'extension choisie", async ({ page }) => {
+    await freshVisit(page);
+    await page.click("#toolbar-more-toggle");
+    await page.selectOption("#jump-to-set", "A2");
+    await expect(page.locator('.set-section[data-set-id="A2"]')).toHaveAttribute("open", "");
+  });
+});
+
+test.describe("Notes et badges", () => {
+  test("une note personnelle sur une carte affiche une pastille dans la grille", async ({ page }) => {
+    await freshVisit(page);
+    await page.locator(".set-section summary").first().click();
+    await page.locator(".card").first().locator(".card-info").click();
+    await page.fill("#card-detail-note", "à échanger contre Dracaufeu");
+    await page.locator("#card-detail-note").blur();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".card-note-badge").first()).toBeVisible();
+  });
+
+  test("une extension à 1-3 Diamants de la complétion affiche le badge \"presque fini\"", async ({ page }) => {
+    await freshVisit(page);
+    await page.locator(".set-section summary").first().click();
+    await page.evaluate(() => {
+      const set = state.sets.find((s) => s.id === "A1");
+      const diamonds = set.cards.filter((c) => c.rarity && c.rarity.group === "Diamond");
+      diamonds.slice(1).forEach((c) => setQuantity(c.id, 1));
+      render();
+    });
+    await expect(page.locator('.set-section[data-set-id="A1"] .badge-almost')).toBeVisible();
+  });
+});
+
+test.describe("Affichage", () => {
+  test("la vue compacte masque le texte des cartes et réduit la taille des vignettes", async ({ page }) => {
+    await freshVisit(page);
+    await page.locator(".set-section summary").first().click();
+    await page.click("#view-compact");
+    await expect(page.locator(".card-grid").first()).toHaveClass(/view-compact/);
+    await expect(page.locator(".card-footer").first()).toBeHidden();
+  });
+
+  test("la mini barre de progression apparaît en scrollant puis disparaît en remontant", async ({ page }) => {
+    await freshVisit(page);
+    await page.locator(".set-section summary").first().click();
+    await page.mouse.wheel(0, 1200);
+    await expect(page.locator("#mini-progress-bar")).toHaveClass(/visible/);
+    await page.click("#mini-progress-top");
+    await expect(page.locator("#mini-progress-bar")).not.toHaveClass(/visible/);
+  });
+});
+
+test.describe("Échange entre joueurs", () => {
+  test("le calculateur boosters compare les différents boosters d'une extension", async ({ page }) => {
+    await freshVisit(page);
+    await page.locator(".set-section summary").first().click();
+    await page.locator('.set-section[data-set-id="A1"] [data-action="pack-calc"]').click();
+    await expect(page.locator("#info-dialog")).toBeVisible();
+    const items = page.locator("#info-dialog .info-list li");
+    expect(await items.count()).toBeGreaterThan(0);
+  });
+
+  test("l'export de la liste d'échange combine doublons et souhaits en une image", async ({ page }) => {
+    await freshVisit(page);
+    await page.locator(".set-section summary").first().click();
+    const cards = page.locator(".card");
+    await cards.nth(0).locator(".card-toggle").click();
+    await cards.nth(0).locator('[data-action="qty-increment"]').click(); // doublon
+    await cards.nth(1).locator(".card-wishlist-btn").click(); // souhait
+
+    await page.click("#toolbar-more-toggle");
+    const downloadPromise = page.waitForEvent("download");
+    await page.click("#export-trade-btn");
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/echange/);
+  });
+
+  test("le lien de partage de liste de souhaits est en lecture seule sur un autre appareil", async ({ page, context, browser }) => {
+    await freshVisit(page);
+    await page.locator(".set-section summary").first().click();
+    await page.locator(".card").nth(2).locator(".card-wishlist-btn").click();
+
+    await page.click("#toolbar-more-toggle");
+    await page.click("#share-wishlist-link-btn");
+    await expect(page.locator("#wishlist-share-link-input")).toBeVisible({ timeout: 10000 });
+    const url = await page.inputValue("#wishlist-share-link-input");
+    expect(url).toContain("#wishlist=");
+
+    // "Autre appareil" = nouveau contexte de navigateur, sans le localStorage de la page ci-dessus.
+    const friendContext = await browser.newContext();
+    const friendPage = await friendContext.newPage();
+    await friendPage.goto(url, { waitUntil: "networkidle" });
+    await friendPage.waitForSelector(".set-section", { timeout: 20000 });
+    await expect(friendPage.locator("#info-dialog")).toBeVisible({ timeout: 10000 });
+    await expect(friendPage.locator("#info-dialog")).toContainText("carte recherchée");
+    // Rien n'a été importé dans la collection de "l'ami" : lecture seule.
+    await expect(friendPage.locator(".dash-main-text")).toContainText("0 / 3879");
+    await friendContext.close();
+  });
+
+  test("comparer avec un ami calcule le delta entre les deux collections", async ({ page }) => {
+    await freshVisit(page);
+    await page.locator(".set-section summary").first().click();
+    await page.locator(".card").first().locator(".card-toggle").click(); // A1-1, je l'ai
+
+    const fs = require("fs");
+    const path = require("path");
+    const filePath = path.join(require("os").tmpdir(), `friend-${Date.now()}.json`);
+    fs.writeFileSync(filePath, JSON.stringify({ quantities: { "A1-2": 1 } })); // l'ami a A1-2
+
+    await page.click("#toolbar-more-toggle");
+    await page.setInputFiles("#compare-input", filePath);
+    await expect(page.locator("#info-dialog")).toBeVisible();
+    await expect(page.locator("#info-dialog")).toContainText("A1-1");
+    await expect(page.locator("#info-dialog")).toContainText("A1-2");
+    fs.unlinkSync(filePath);
   });
 });

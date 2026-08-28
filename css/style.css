@@ -303,18 +303,18 @@ button {
   display: none;
 }
 
-/* Repliée par défaut uniquement en dessous de 640px — au-delà, .toolbar-more-inner reste
-   toujours dépliée (affichée "à plat" dans .toolbar, comme avant l'ajout de ce conteneur),
-   quel que soit l'attribut hidden, et le bouton qui replie/déplie disparaît. */
-@media (min-width: 641px) {
-  #toolbar-more-toggle {
-    display: none;
-  }
+.toolbar-more-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding-top: 10px;
+  flex-basis: 100%;
+}
 
-  .toolbar-more-inner[hidden],
-  .toolbar-more-inner {
-    display: contents;
-  }
+.toolbar-more .toolbar-group {
+  padding-left: 0;
+  border-left: none;
 }
 
 #search-input {
@@ -428,11 +428,17 @@ button {
 }
 
 .filter-panel-head {
-  display: none;
+  display: flex;
   flex-basis: 100%;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  margin: -14px -14px 4px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
 }
 
 .filter-panel-title {
@@ -450,6 +456,12 @@ button {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.filter-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
 }
 
 .chip-row {
@@ -719,6 +731,18 @@ button {
   gap: 4px;
 }
 
+/* Vue compacte : miniatures seules (pas de nom/numéro/boutons), pour scanner un maximum de
+   cartes d'un coup d'œil. Le toggle possédé/manquant et le bouton souhait restent actifs. */
+.card-grid.view-compact {
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  gap: 6px;
+}
+
+.view-compact .card-footer,
+.view-compact .card-wishlist-btn {
+  display: none;
+}
+
 .card {
   position: relative;
   border: 1px solid var(--border);
@@ -894,18 +918,21 @@ button {
   min-height: 18px;
 }
 
+/* Icône seule (ⓘ) plutôt que "ⓘ Détails" : le texte était systématiquement tronqué dans
+   l'espace restreint de .card-meta-row — voir aria-label/title pour le libellé accessible. */
 .card-info {
   all: unset;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 7px;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
   border-radius: 999px;
   background: var(--surface-3);
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 0.65rem;
-  white-space: nowrap;
+  font-size: 0.8rem;
 }
 
 .card-info:hover {
@@ -1187,6 +1214,33 @@ body:has(.selection-bar:not([hidden])) .toast-container {
   transform: translateY(0);
 }
 
+/* ---------- Mini barre de progression (résumé condensé au scroll) ---------- */
+.mini-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px clamp(12px, 4vw, 32px);
+  border-radius: 0;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 0.85rem;
+  font-weight: 600;
+  opacity: 0;
+  transform: translateY(-100%);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.mini-progress-bar.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+
 /* ---------- Footer ---------- */
 .app-footer {
   padding: 20px clamp(12px, 4vw, 32px) 40px;
@@ -1327,9 +1381,10 @@ body:has(.selection-bar:not([hidden])) .toast-container {
   display: none;
 }
 
-/* ---------- Boîtes de dialogue (confirmation / synchronisation) ---------- */
+/* ---------- Boîtes de dialogue (confirmation / synchronisation / info) ---------- */
 .confirm-dialog,
-.sync-dialog {
+.sync-dialog,
+.info-dialog {
   border-radius: var(--radius);
   padding: 0;
   color: var(--text);
@@ -1337,9 +1392,69 @@ body:has(.selection-bar:not([hidden])) .toast-container {
 }
 
 .confirm-dialog::backdrop,
-.sync-dialog::backdrop {
+.sync-dialog::backdrop,
+.info-dialog::backdrop {
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(3px);
+}
+
+/* Réutilisée par tout contenu informatif ponctuel : comparaison de collections, classement des
+   boosters, aperçu d'une liste de souhaits partagée. */
+.info-dialog {
+  max-width: min(92vw, 560px);
+  max-height: 85vh;
+}
+
+.info-body {
+  padding: 22px;
+  position: relative;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.info-body h3 {
+  margin: 0 0 12px;
+}
+
+.info-section-title {
+  font-weight: 700;
+  margin: 18px 0 8px;
+}
+
+.info-section-title:first-of-type {
+  margin-top: 0;
+}
+
+.info-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  font-size: 0.85rem;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.info-list li {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.info-list li:last-child {
+  border-bottom: none;
+}
+
+.info-list li.info-badge-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.info-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
 }
 
 .confirm-body {
@@ -1504,40 +1619,54 @@ body.focus-mode #search-input {
     box-shadow: 0 -8px 24px var(--shadow);
   }
 
-  .filter-panel-head {
-    display: flex;
-    position: sticky;
-    top: 0;
-    background: var(--surface);
-    margin: -14px -14px 4px;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  #toolbar-more-toggle {
-    display: inline-flex;
-  }
-
-  .toolbar-more-inner {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-    padding-top: 10px;
-    flex-basis: 100%;
-  }
-
-  .toolbar-more .toolbar-group {
-    padding-left: 0;
-    border-left: none;
-  }
-
   .card-detail {
     flex-direction: column;
   }
 
   .card-detail-media img {
     width: 100%;
+  }
+}
+
+/* ---------- Impression / export PDF (liste des manquantes) ---------- */
+.print-only {
+  display: none;
+}
+
+@media print {
+  body > *:not(.print-only) {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+    color: #000;
+    background: #fff;
+  }
+
+  .print-only h1 {
+    font-size: 1.4rem;
+    margin: 0 0 4px;
+  }
+
+  .print-only section {
+    break-inside: avoid;
+    margin-bottom: 18px;
+  }
+
+  .print-only h2 {
+    font-size: 1.05rem;
+    border-bottom: 1px solid #000;
+    padding-bottom: 4px;
+    margin: 0 0 6px;
+  }
+
+  .print-only ul {
+    columns: 2;
+    column-gap: 24px;
+    margin: 0;
+    padding-left: 18px;
+    font-size: 0.85rem;
   }
 }
 

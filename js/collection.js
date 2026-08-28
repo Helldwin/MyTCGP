@@ -5,9 +5,11 @@
 
 const COLLECTION_KEY = "tcgp_collection";
 const WISHLIST_KEY = "tcgp_wishlist";
+const NOTES_KEY = "tcgp_notes";
 const LAST_MODIFIED_KEY = "tcgp_last_modified";
 const LAST_EXPORTED_KEY = "tcgp_last_exported";
 const MAX_QUANTITY = 99;
+const MAX_NOTE_LENGTH = 280;
 
 function loadQuantities() {
   try {
@@ -35,8 +37,19 @@ function loadWishlist() {
   }
 }
 
+function loadNotes() {
+  try {
+    const raw = localStorage.getItem(NOTES_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? new Map(Object.entries(parsed)) : new Map();
+  } catch {
+    return new Map();
+  }
+}
+
 let cardQuantities = loadQuantities();
 let wishlistIds = loadWishlist();
+let cardNotes = loadNotes();
 
 function saveQuantities() {
   try {
@@ -131,6 +144,26 @@ function toggleWishlist(cardId) {
 
 function removeFromWishlist(cardId) {
   if (wishlistIds.delete(cardId)) saveWishlist();
+}
+
+/** Note personnelle libre sur une carte (ex. "à échanger contre X") — vide si aucune. */
+function getNote(cardId) {
+  return cardNotes.get(cardId) || "";
+}
+
+function hasNote(cardId) {
+  return cardNotes.has(cardId);
+}
+
+function setNote(cardId, text) {
+  const trimmed = (text || "").trim().slice(0, MAX_NOTE_LENGTH);
+  if (trimmed) cardNotes.set(cardId, trimmed);
+  else cardNotes.delete(cardId);
+  try {
+    localStorage.setItem(NOTES_KEY, JSON.stringify(Object.fromEntries(cardNotes)));
+  } catch {
+    // pas bloquant
+  }
 }
 
 function getLastModified() {

@@ -21,8 +21,13 @@ function cardMatchesFilters(card) {
   if (uiState.onlyWishlist && !isWishlisted(card.id)) return false;
   if (uiState.onlyDuplicates && getQuantity(card.id) <= 1) return false;
   if (uiState.search) {
-    const needle = normalizeSearchText(uiState.search);
-    if (!normalizeSearchText(card.name).includes(needle)) return false;
+    const raw = uiState.search.trim();
+    const needle = normalizeSearchText(raw);
+    const matchesName = normalizeSearchText(card.name).includes(needle);
+    // Recherche aussi par numéro de carte ("25", "025" ou "#25" trouvent la carte n°25).
+    const numericNeedle = raw.replace(/^#/, "").trim();
+    const matchesNumber = /^\d+$/.test(numericNeedle) && Number(card.localId) === Number(numericNeedle);
+    if (!matchesName && !matchesNumber) return false;
   }
   if (uiState.rarityGroups.length) {
     if (!card.rarity || !uiState.rarityGroups.includes(card.rarity.group)) return false;
@@ -94,6 +99,55 @@ function estimatePacksForSet(set) {
   };
 }
 
+/**
+ * Même estimation que estimatePacksForSet, mais booster par booster (au lieu d'une moyenne
+ * pondérée sur toute l'extension) — pour savoir lequel ouvrir en priorité quand une extension
+ * en propose plusieurs. Contrairement à estimatePacksForSet, on ne pondère pas par la
+ * fréquence de choix du booster (appearance_rate) : on suppose ici qu'on choisit délibérément
+ * CE booster à chaque fois, pas un tirage au sort entre boosters.
+ */
+function estimatePacksPerBooster(set) {
+  if (!set.pullRates) return null;
+
+  return Object.entries(set.pullRates)
+    .map(([boosterName, packType]) => {
+      const missingByRarity = {};
+      const totalByRarity = {};
+      set.cards.forEach((card) => {
+        if (!(card.packs || []).includes(boosterName)) return;
+        const code = card.rarityCode;
+        if (!code) return;
+        totalByRarity[code] = (totalByRarity[code] || 0) + 1;
+        if (!isOwned(card.id)) missingByRarity[code] = (missingByRarity[code] || 0) + 1;
+      });
+
+      const totalMissingDiamonds = DIAMOND_RARITY_CODES.reduce((sum, code) => sum + (missingByRarity[code] || 0), 0);
+
+      const expectedPerBoosterByRarity = {};
+      Object.values(packType.slots || {}).forEach((slotOdds) => {
+        Object.entries(slotOdds).forEach(([code, pct]) => {
+          expectedPerBoosterByRarity[code] = (expectedPerBoosterByRarity[code] || 0) + pct / 100;
+        });
+      });
+
+      let expectedNewPerBooster = 0;
+      DIAMOND_RARITY_CODES.forEach((code) => {
+        const missing = missingByRarity[code] || 0;
+        const total = totalByRarity[code] || 0;
+        const perBooster = expectedPerBoosterByRarity[code] || 0;
+        if (missing > 0 && total > 0) expectedNewPerBooster += perBooster * (missing / total);
+      });
+
+      return {
+        boosterName,
+        totalMissingDiamonds,
+        expectedNewPerBooster,
+        estimatedBoosters: expectedNewPerBooster > 0 ? Math.ceil(totalMissingDiamonds / expectedNewPerBooster) : null,
+      };
+    })
+    .sort((a, b) => (a.estimatedBoosters ?? Infinity) - (b.estimatedBoosters ?? Infinity));
+}
+
 /** Nombre de cartes possédées dans un set (helper réutilisé partout pour éviter la duplication). */
 /** Libellé d'une série pour le tableau de bord : "Série A"/"Série B", ou juste "Promo" pour P. */
 function seriesLabel(key) {
@@ -144,6 +198,18 @@ function setCompletionRatio(set) {
 /** Une extension est "Terminée" une fois toutes ses cartes Diamant obtenues. */
 function isSetComplete(set) {
   return set.cards.length > 0 && setCompletionRatio(set) >= 1;
+}
+
+// Seuil d'affichage du badge "presque fini" : à ce nombre de Diamants ou moins de la
+// complétion, ça vaut le coup de le signaler (au-delà, ça n'aide pas vraiment à prioriser).
+const ALMOST_DONE_THRESHOLD = 3;
+
+/** Nombre de Diamants manquants si l'extension est "presque finie" (1 à 3), sinon null. */
+function almostDoneRemaining(set) {
+  const diamond = computeSetTiers(set).Diamond;
+  if (diamond.total === 0) return null;
+  const remaining = diamond.total - diamond.owned;
+  return remaining > 0 && remaining <= ALMOST_DONE_THRESHOLD ? remaining : null;
 }
 
 function computeStats(sets) {
@@ -308,10 +374,6 @@ function renderFilterPanel(container, sets, onChange) {
     .join("");
 
   container.innerHTML = `
-    <div class="filter-panel-head">
-      <span class="filter-panel-title">Filtres</span>
-      <button type="button" class="btn btn-tiny" id="filter-panel-close" aria-label="Fermer les filtres">✕ Fermer</button>
-    </div>
     <div class="filter-group">
       <span class="filter-legend">Rareté</span>
       <div class="chip-row">${rarityChips}</div>
@@ -362,14 +424,6 @@ function renderFilterPanel(container, sets, onChange) {
     saveUIState();
     renderFilterPanel(container, sets, onChange);
     onChange();
-  });
-
-  // Bouton de fermeture explicite : en mobile (feuille du bas), le panneau peut recouvrir le
-  // bouton "Filtres" qui l'a ouvert (position: fixed sur ~70% de l'écran) — sans ce bouton,
-  // impossible de le refermer au toucher.
-  container.querySelector("#filter-panel-close").addEventListener("click", () => {
-    container.hidden = true;
-    document.getElementById("filter-toggle")?.setAttribute("aria-expanded", "false");
   });
 }
 
@@ -445,8 +499,9 @@ function renderCard(card) {
       <span class="card-label-text">${card.localId} · ${card.name}</span>
       <div class="card-meta-row">
         ${rarityBadge}
+        ${hasNote(card.id) ? `<span class="card-note-badge" title="${getNote(card.id)}">📝</span>` : ""}
         ${owned ? buildQtyStepperHtml(quantity) : ""}
-        <button type="button" class="card-info" aria-label="Détails de ${card.name}">ⓘ Détails</button>
+        <button type="button" class="card-info" aria-label="Détails de ${card.name}" title="Détails">ⓘ</button>
       </div>
     </div>
   `;
@@ -466,6 +521,7 @@ function renderSetSection(set, visibleCards, stats) {
   const pct = total ? Math.round((owned / total) * 100) : 0;
   const complete = isSetComplete(set);
   const isNewest = set.id === stats.newestSetId;
+  const almostRemaining = complete ? null : almostDoneRemaining(set);
 
   // Perf : toutes les extensions sont repliées par défaut (une recherche ou un filtre actif
   // force temporairement l'ouverture pour montrer les résultats). Le contenu de la grille
@@ -494,6 +550,7 @@ function renderSetSection(set, visibleCards, stats) {
         ${set.name}
         ${isNewest ? '<span class="badge badge-new">Nouveau</span>' : ""}
         ${complete ? '<span class="badge badge-complete">Terminée ✓</span>' : ""}
+        ${almostRemaining ? `<span class="badge badge-almost">🔥 Plus que ${almostRemaining}</span>` : ""}
       </span>
     </span>
     <span class="set-summary-progress">
@@ -595,8 +652,21 @@ function patchCardDOM(card) {
     wishlistBtn.remove();
   }
 
-  // Pastille de quantité : n'existe que pour une carte possédée, à créer/retirer selon.
+  // Pastille de note : n'existe que si une note personnelle a été saisie sur cette carte.
   const metaRow = el.querySelector(".card-meta-row");
+  let noteBadge = metaRow.querySelector(".card-note-badge");
+  if (hasNote(card.id)) {
+    if (!noteBadge) {
+      noteBadge = document.createElement("span");
+      noteBadge.className = "card-note-badge";
+      metaRow.insertBefore(noteBadge, metaRow.querySelector(".qty-stepper") || metaRow.querySelector(".card-info"));
+    }
+    noteBadge.title = getNote(card.id);
+    noteBadge.textContent = "📝";
+  } else if (noteBadge) {
+    noteBadge.remove();
+  }
+
   let qtyStepper = el.querySelector(".qty-stepper");
   if (owned) {
     if (!qtyStepper) {
@@ -663,6 +733,19 @@ function updateSetProgressBars(sets) {
       title.appendChild(completeBadge);
     } else if (!complete && completeBadge) {
       completeBadge.remove();
+    }
+
+    const almostRemaining = complete ? null : almostDoneRemaining(set);
+    let almostBadge = title.querySelector(".badge-almost");
+    if (almostRemaining) {
+      if (!almostBadge) {
+        almostBadge = document.createElement("span");
+        almostBadge.className = "badge badge-almost";
+        title.appendChild(almostBadge);
+      }
+      almostBadge.textContent = `🔥 Plus que ${almostRemaining}`;
+    } else if (almostBadge) {
+      almostBadge.remove();
     }
 
     const tiersEl = section.querySelector(".set-tiers");
@@ -736,6 +819,21 @@ function buildMissingText(sets) {
   return lines.join("\n").trim();
 }
 
+/** Version HTML (au lieu de texte brut) de la liste des manquantes, pour l'impression/PDF. */
+function buildMissingListHtml(sets) {
+  const sections = sets
+    .map((set) => {
+      const missing = set.cards.filter((card) => !isOwned(card.id));
+      if (missing.length === 0) return "";
+      const items = missing
+        .map((card) => `<li>${formatCardNumber(card.localId)} · ${card.name}</li>`)
+        .join("");
+      return `<section><h2>${set.name} — ${missing.length} manquante${missing.length > 1 ? "s" : ""}</h2><ul>${items}</ul></section>`;
+    })
+    .join("");
+  return sections || "<p>Toutes les cartes visées sont déjà possédées !</p>";
+}
+
 async function copyMissingToClipboard(sets) {
   const text = buildMissingText(sets);
   if (!text) {
@@ -751,7 +849,7 @@ async function copyMissingToClipboard(sets) {
   }
 }
 
-function openCardDetail(card) {
+function openCardDetail(card, { onSearchByName } = {}) {
   const dialog = document.getElementById("card-detail-dialog");
   if (!dialog) return;
   const owned = isOwned(card.id);
@@ -772,7 +870,9 @@ function openCardDetail(card) {
       <button type="submit" class="card-detail-close" aria-label="Fermer">×</button>
       <div class="card-detail-media">${buildCardMediaHtml(card, owned, { large: true })}</div>
       <div class="card-detail-info">
-        <h3>${card.name}</h3>
+        <h3>
+          <button type="button" class="card-detail-name-btn" id="card-detail-search-name" title="Voir toutes les cartes de ${card.name}">${card.name}</button>
+        </h3>
         <p class="card-detail-sub">${card.id}${card.rarity ? " · " + card.rarity.label : ""} ${buildRarityIcons(card.rarity)}</p>
         <dl class="card-detail-stats">${rowsHtml}</dl>
         ${
@@ -793,6 +893,13 @@ function openCardDetail(card) {
         <button type="button" class="btn" id="card-detail-toggle">
           ${owned ? "Marquer comme manquante" : "Marquer comme possédée"}
         </button>
+        <label class="card-detail-note-label" for="card-detail-note">Note personnelle</label>
+        <textarea
+          id="card-detail-note"
+          class="card-detail-note"
+          maxlength="280"
+          placeholder="Ex. : à échanger contre..."
+        >${getNote(card.id)}</textarea>
       </div>
     </form>
   `;
@@ -800,6 +907,17 @@ function openCardDetail(card) {
   dialog.querySelector("#card-detail-toggle").addEventListener("click", () => {
     handleCardToggle(card);
     dialog.close();
+  });
+
+  dialog.querySelector("#card-detail-search-name").addEventListener("click", () => {
+    onSearchByName?.(card.name);
+    dialog.close();
+  });
+
+  const noteField = dialog.querySelector("#card-detail-note");
+  noteField.addEventListener("blur", () => {
+    setNote(card.id, noteField.value);
+    patchCardDOM(card);
   });
 
   dialog.showModal();

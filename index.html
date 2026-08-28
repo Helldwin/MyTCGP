@@ -43,12 +43,108 @@
       <input
         type="search"
         id="search-input"
-        placeholder="Rechercher une carte…"
+        placeholder="Rechercher un nom ou un numéro…"
         autocomplete="off"
-        aria-label="Rechercher une carte par nom"
+        aria-label="Rechercher une carte par nom ou par numéro"
       />
 
       <div class="toolbar-group">
+        <label class="select-label">
+          Trier :
+          <select id="sort-select" aria-label="Trier les extensions">
+            <option value="release">Date de sortie</option>
+            <option value="completion">Progression (Diamants)</option>
+            <option value="name">Nom</option>
+            <option value="count">Nombre de cartes</option>
+          </select>
+        </label>
+
+        <div class="view-toggle" role="group" aria-label="Mode d'affichage">
+          <button type="button" id="view-grid" class="btn btn-secondary" aria-pressed="true">▦ Grille</button>
+          <button type="button" id="view-list" class="btn btn-secondary" aria-pressed="false">☰ Liste</button>
+          <button type="button" id="view-compact" class="btn btn-secondary" aria-pressed="false" title="Miniatures seules, pour scanner vite">▪▪▪ Compact</button>
+        </div>
+      </div>
+
+      <button type="button" id="filter-toggle" class="btn btn-secondary" aria-expanded="false" aria-controls="filter-panel">
+        🔎 Filtres
+      </button>
+
+      <!-- Hors d'un .toolbar-group délibérément : doit rester visible même en mode focus,
+           sinon impossible de quitter ce mode sans recharger la page. -->
+      <button type="button" id="focus-mode-btn" class="btn btn-secondary focus-mode-toggle" aria-pressed="false">🎯 Mode focus</button>
+
+      <!-- Repliée par défaut sur tous les écrans (pas seulement mobile) : la barre d'outils
+           devenait trop chargée avec toutes ces actions secondaires affichées en permanence.
+           Un <details> natif a été tenté ici mais écarté : Chrome traite le contenu d'un
+           <details> fermé comme non visible (checkVisibility()/hit-testing) même avec un
+           `display` forcé en CSS — contrairement à l'attribut `hidden`, dont le seul effet est
+           une règle CSS de base (`[hidden]{display:none}`) normalement surchargeable. -->
+      <div class="toolbar-more">
+        <button type="button" id="toolbar-more-toggle" class="btn btn-secondary" aria-expanded="false" aria-controls="toolbar-more-inner">
+          ⋯ Plus d'actions
+        </button>
+        <div id="toolbar-more-inner" class="toolbar-more-inner" hidden>
+          <div class="toolbar-group">
+            <button type="button" id="expand-all" class="btn btn-secondary">Tout déplier</button>
+            <button type="button" id="collapse-all" class="btn btn-secondary">Tout plier</button>
+            <button type="button" id="shortcuts-help-btn" class="btn btn-secondary" aria-label="Raccourcis clavier">⌨️</button>
+            <select id="jump-to-set" aria-label="Aller directement à une extension">
+              <option value="">↳ Aller à…</option>
+            </select>
+          </div>
+
+          <div class="toolbar-group">
+            <button type="button" id="refresh-btn" class="btn btn-secondary">Actualiser les données</button>
+            <button type="button" id="enable-reminders-btn" class="btn btn-secondary" title="Rappel d'export si pas de sauvegarde récente, à l'ouverture de l'appli">🔔 Activer les rappels</button>
+            <button type="button" id="copy-missing-btn" class="btn btn-secondary">Copier tout ce qui manque</button>
+            <button type="button" id="print-missing-btn" class="btn btn-secondary">🖨️ Imprimer / PDF les manquantes</button>
+            <button type="button" id="export-wishlist-btn" class="btn btn-secondary">★ Exporter mes souhaits</button>
+            <button type="button" id="export-duplicates-btn" class="btn btn-secondary">📦 Exporter mes doublons</button>
+            <button type="button" id="export-trade-btn" class="btn btn-secondary">🔀 Liste d'échange (doublons + souhaits)</button>
+            <select id="share-format-select" aria-label="Format de l'image de partage">
+              <option value="standard">Format standard</option>
+              <option value="square">Format carré (story)</option>
+              <option value="portrait">Format vertical (story)</option>
+            </select>
+            <button type="button" id="share-progress-btn" class="btn btn-secondary">🏆 Partager ma progression</button>
+          </div>
+
+          <div class="toolbar-group">
+            <button type="button" id="sync-btn" class="btn btn-secondary">🔗 Synchroniser un appareil</button>
+            <button type="button" id="export-btn" class="btn btn-secondary">Exporter</button>
+            <label class="btn btn-secondary file-label">
+              Importer
+              <input type="file" id="import-input" accept="application/json" hidden />
+            </label>
+          </div>
+
+          <div class="toolbar-group">
+            <button type="button" id="share-wishlist-link-btn" class="btn btn-secondary">🔗 Partager ma liste de souhaits</button>
+            <label class="btn btn-secondary file-label">
+              🔀 Comparer avec un ami
+              <input type="file" id="compare-input" accept="application/json" hidden />
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p id="status" class="status" role="status"></p>
+  </header>
+
+  <!-- Hors du <header> délibérément : le header est en `backdrop-filter` (voir .glass), qui crée
+       un nouveau bloc de confinement pour tout descendant en `position: fixed` — le panneau se
+       positionnerait alors par rapport au header au lieu de l'écran (feuille du bas cassée en
+       mobile, superposée au contenu au lieu d'être plaquée en bas de l'écran). -->
+  <div id="filter-panel" class="filter-panel glass" hidden>
+    <div class="filter-panel-head">
+      <span class="filter-panel-title">Filtres</span>
+      <button type="button" id="filter-panel-close" class="btn btn-tiny" aria-label="Fermer les filtres">✕ Fermer</button>
+    </div>
+    <div class="filter-group">
+      <span class="filter-legend">Affichage</span>
+      <div class="filter-checkboxes">
         <label class="checkbox-label">
           <input type="checkbox" id="only-missing" />
           Manquantes seulement
@@ -70,83 +166,17 @@
           Masquer les promos
         </label>
       </div>
-
-      <div class="toolbar-group">
-        <label class="select-label">
-          Trier :
-          <select id="sort-select" aria-label="Trier les extensions">
-            <option value="release">Date de sortie</option>
-            <option value="completion">Progression (Diamants)</option>
-            <option value="name">Nom</option>
-            <option value="count">Nombre de cartes</option>
-          </select>
-        </label>
-
-        <div class="view-toggle" role="group" aria-label="Mode d'affichage">
-          <button type="button" id="view-grid" class="btn btn-secondary" aria-pressed="true">▦ Grille</button>
-          <button type="button" id="view-list" class="btn btn-secondary" aria-pressed="false">☰ Liste</button>
-        </div>
-      </div>
-
-      <button type="button" id="filter-toggle" class="btn btn-secondary" aria-expanded="false" aria-controls="filter-panel">
-        🔎 Filtres
-      </button>
-
-      <!-- Hors d'un .toolbar-group délibérément : doit rester visible même en mode focus,
-           sinon impossible de quitter ce mode sans recharger la page. -->
-      <button type="button" id="focus-mode-btn" class="btn btn-secondary focus-mode-toggle" aria-pressed="false">🎯 Mode focus</button>
-
-      <!-- Repliable sur mobile (par défaut fermé, économise beaucoup de défilement avant
-           d'atteindre les extensions) ; toujours dépliée sur desktop, voir la règle
-           `.toolbar-more-inner[hidden] { display: contents }` au-delà de 640px dans style.css.
-           Un <details> natif a été tenté ici mais écarté : Chrome traite le contenu d'un
-           <details> fermé comme non visible (checkVisibility()/hit-testing) même avec un
-           `display` forcé en CSS — contrairement à l'attribut `hidden`, dont le seul effet est
-           une règle CSS de base (`[hidden]{display:none}`) normalement surchargeable. -->
-      <div class="toolbar-more">
-        <button type="button" id="toolbar-more-toggle" class="btn btn-secondary" aria-expanded="false" aria-controls="toolbar-more-inner">
-          ⋯ Plus d'actions
-        </button>
-        <div id="toolbar-more-inner" class="toolbar-more-inner" hidden>
-          <div class="toolbar-group">
-            <button type="button" id="expand-all" class="btn btn-secondary">Tout déplier</button>
-            <button type="button" id="collapse-all" class="btn btn-secondary">Tout plier</button>
-            <button type="button" id="shortcuts-help-btn" class="btn btn-secondary" aria-label="Raccourcis clavier">⌨️</button>
-          </div>
-
-          <div class="toolbar-group">
-            <button type="button" id="refresh-btn" class="btn btn-secondary">Actualiser les données</button>
-            <button type="button" id="copy-missing-btn" class="btn btn-secondary">Copier tout ce qui manque</button>
-            <button type="button" id="export-wishlist-btn" class="btn btn-secondary">★ Exporter mes souhaits</button>
-            <button type="button" id="export-duplicates-btn" class="btn btn-secondary">📦 Exporter mes doublons</button>
-            <select id="share-format-select" aria-label="Format de l'image de partage">
-              <option value="standard">Format standard</option>
-              <option value="square">Format carré (story)</option>
-              <option value="portrait">Format vertical (story)</option>
-            </select>
-            <button type="button" id="share-progress-btn" class="btn btn-secondary">🏆 Partager ma progression</button>
-          </div>
-
-          <div class="toolbar-group">
-            <button type="button" id="sync-btn" class="btn btn-secondary">🔗 Synchroniser un appareil</button>
-            <button type="button" id="export-btn" class="btn btn-secondary">Exporter</button>
-            <label class="btn btn-secondary file-label">
-              Importer
-              <input type="file" id="import-input" accept="application/json" hidden />
-            </label>
-          </div>
-        </div>
-      </div>
     </div>
+    <div id="filter-panel-dynamic"></div>
+  </div>
 
-    <p id="status" class="status" role="status"></p>
-  </header>
-
-  <!-- Hors du <header> délibérément : le header est en `backdrop-filter` (voir .glass), qui crée
-       un nouveau bloc de confinement pour tout descendant en `position: fixed` — le panneau se
-       positionnerait alors par rapport au header au lieu de l'écran (feuille du bas cassée en
-       mobile, superposée au contenu au lieu d'être plaquée en bas de l'écran). -->
-  <div id="filter-panel" class="filter-panel glass" hidden></div>
+  <!-- Résumé condensé qui apparaît une fois qu'on a scrollé au-delà du tableau de bord complet —
+       volontairement minuscule (une seule ligne) : contrairement à .app-header, jamais plus
+       grand que l'écran, donc sans risque de recouvrir le contenu en position sticky/fixed. -->
+  <div id="mini-progress-bar" class="mini-progress-bar glass" aria-hidden="true">
+    <span id="mini-progress-text"></span>
+    <button type="button" id="mini-progress-top" class="btn btn-tiny" aria-label="Retour en haut">↑ Haut</button>
+  </div>
 
   <main id="sets-container" class="sets-container"></main>
 
@@ -162,6 +192,10 @@
 
   <button type="button" id="back-to-top" class="back-to-top glass" aria-label="Retour en haut de page">↑</button>
 
+  <!-- Rempli au clic sur "Imprimer / PDF les manquantes" puis affiché via window.print() —
+       masqué à l'écran, seul contenu visible à l'impression (voir @media print). -->
+  <div id="print-area" class="print-only"></div>
+
   <div id="selection-bar" class="selection-bar glass" hidden>
     <span id="selection-count"></span>
     <button type="button" id="selection-mark-owned" class="btn btn-tiny">Marquer possédées</button>
@@ -172,6 +206,7 @@
   <dialog id="card-detail-dialog" class="card-detail-dialog glass"></dialog>
   <dialog id="confirm-dialog" class="confirm-dialog glass"></dialog>
   <dialog id="sync-dialog" class="sync-dialog glass"></dialog>
+  <dialog id="info-dialog" class="info-dialog glass"></dialog>
 
   <script src="js/api.js"></script>
   <script src="js/collection.js"></script>

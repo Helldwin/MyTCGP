@@ -555,3 +555,166 @@ async function generateDuplicatesImage(sets) {
     showToast("Impossible de générer l'image.");
   }
 }
+
+/**
+ * Dessine une grille de cartes à partir de `startY`, avec une pastille "+N" optionnelle
+ * (doublons) au-dessus de chaque vignette. Retourne le Y juste après la grille dessinée.
+ * Factorisé pour generateTradeListImage, qui affiche deux sections (doublons + souhaits)
+ * dans une seule image.
+ */
+function drawCardsGridSection(ctx, cards, images, { startY, columns, cellWidth, cardHeight, cellHeight, gap, margin, getBadge }) {
+  cards.forEach((card, index) => {
+    const col = index % columns;
+    const row = Math.floor(index / columns);
+    const x = margin + col * (cellWidth + gap);
+    const y = startY + row * (cellHeight + gap);
+
+    const img = images[index];
+    if (img) {
+      ctx.save();
+      drawRoundedRectPath(ctx, x, y, cellWidth, cardHeight, 6);
+      ctx.clip();
+      drawImageContain(ctx, img, x, y, cellWidth, cardHeight);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = "#e6e8f0";
+      drawRoundedRectPath(ctx, x, y, cellWidth, cardHeight, 6);
+      ctx.fill();
+      ctx.fillStyle = "#5b6072";
+      ctx.textAlign = "center";
+      ctx.font = "bold 15px 'Segoe UI', sans-serif";
+      ctx.fillText(formatCardNumber(card.localId), x + cellWidth / 2, y + cardHeight / 2 + 5);
+    }
+    ctx.strokeStyle = "#dcdfe8";
+    ctx.lineWidth = 1;
+    drawRoundedRectPath(ctx, x, y, cellWidth, cardHeight, 6);
+    ctx.stroke();
+
+    const badge = getBadge ? getBadge(card) : null;
+    if (badge) {
+      ctx.fillStyle = "#ffcb05";
+      drawRoundedRectPath(ctx, x + cellWidth - 26, y + 4, 22, 16, 8);
+      ctx.fill();
+      ctx.fillStyle = "#12141c";
+      ctx.textAlign = "center";
+      ctx.font = "bold 10px 'Segoe UI', sans-serif";
+      ctx.fillText(badge, x + cellWidth - 15, y + 15);
+    }
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#1b1e2a";
+    ctx.font = "bold 10px 'Segoe UI', sans-serif";
+    ctx.fillText(`${card.id}`, x + cellWidth / 2, y + cardHeight + 14);
+    ctx.fillStyle = "#5b6072";
+    ctx.font = "10px 'Segoe UI', sans-serif";
+    ctx.fillText(truncateText(card.name, 15), x + cellWidth / 2, y + cardHeight + 28);
+  });
+
+  const rows = Math.ceil(cards.length / columns);
+  return startY + rows * cellHeight + Math.max(0, rows - 1) * gap;
+}
+
+/**
+ * Génère un PNG combinant doublons ("à échanger") et liste de souhaits ("je recherche") en une
+ * seule image — pratique pour proposer un échange complet à quelqu'un en un coup d'œil.
+ */
+async function generateTradeListImage(sets) {
+  const allCards = sets.flatMap((set) => set.cards);
+  const duplicateCards = allCards.filter((card) => getQuantity(card.id) > 1);
+  const wishlistIds = new Set(getWishlistIds());
+  const wishlistCards = allCards.filter((card) => wishlistIds.has(card.id));
+
+  if (duplicateCards.length === 0 && wishlistCards.length === 0) {
+    showToast("Rien à échanger pour l'instant : ni doublon, ni liste de souhaits.");
+    return;
+  }
+
+  const dismissLoading = showToast("Génération de l'image d'échange…", { duration: 45000 });
+
+  try {
+    const cellWidth = 82;
+    const cardHeight = Math.round(cellWidth * (337 / 245));
+    const labelHeight = 30;
+    const cellHeight = cardHeight + labelHeight;
+    const gap = 10;
+    const margin = 22;
+    const headerHeight = 74;
+    const sectionTitleHeight = 40;
+
+    const columnsFor = (count) => Math.min(12, Math.max(5, Math.ceil(Math.sqrt(count * 1.4))));
+    const columns = columnsFor(Math.max(duplicateCards.length, wishlistCards.length, 1));
+
+    const rowsFor = (count) => Math.ceil(count / columns);
+    const sectionHeight = (count) => (count > 0 ? sectionTitleHeight + rowsFor(count) * cellHeight + Math.max(0, rowsFor(count) - 1) * gap + margin : 0);
+
+    const width = margin * 2 + columns * cellWidth + (columns - 1) * gap;
+    const height =
+      headerHeight + margin + sectionHeight(duplicateCards.length) + sectionHeight(wishlistCards.length) + margin;
+
+    const [duplicateImages, wishlistImages] = await Promise.all([
+      Promise.all(duplicateCards.map((card) => loadImageOrNull(card.thumb || card.image))),
+      Promise.all(wishlistCards.map((card) => loadImageOrNull(card.thumb || card.image))),
+    ]);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+
+    ctx.fillStyle = "#f5f6fa";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#12141c";
+    ctx.fillRect(0, 0, width, headerHeight);
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 24px 'Segoe UI', sans-serif";
+    ctx.fillText("🔀 Ma liste d'échange", margin, headerHeight / 2 + 6);
+
+    let y = headerHeight + margin;
+
+    if (duplicateCards.length > 0) {
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#1b1e2a";
+      ctx.font = "bold 16px 'Segoe UI', sans-serif";
+      ctx.fillText(`📦 J'ai en double (${duplicateCards.length}) — je donne`, margin, y + 20);
+      y = drawCardsGridSection(ctx, duplicateCards, duplicateImages, {
+        startY: y + sectionTitleHeight,
+        columns,
+        cellWidth,
+        cardHeight,
+        cellHeight,
+        gap,
+        margin,
+        getBadge: (card) => `+${getQuantity(card.id) - 1}`,
+      });
+      y += margin;
+    }
+
+    if (wishlistCards.length > 0) {
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#1b1e2a";
+      ctx.font = "bold 16px 'Segoe UI', sans-serif";
+      ctx.fillText(`★ Je recherche (${wishlistCards.length}) — je prends`, margin, y + 20);
+      drawCardsGridSection(ctx, wishlistCards, wishlistImages, {
+        startY: y + sectionTitleHeight,
+        columns,
+        cellWidth,
+        cardHeight,
+        cellHeight,
+        gap,
+        margin,
+      });
+    }
+
+    const blob = await canvasToPngBlob(canvas);
+    downloadBlob(blob, `ma-liste-d-echange-tcgp-${new Date().toISOString().slice(0, 10)}.png`);
+    dismissLoading();
+    showToast("Image téléchargée.");
+  } catch (err) {
+    console.error(err);
+    dismissLoading();
+    showToast("Impossible de générer l'image.");
+  }
+}

@@ -186,6 +186,78 @@ function readSyncFromLocation() {
   return match ? match[1] : null;
 }
 
+// ---------- Partage de liste de souhaits (lecture seule, distinct de la synchro complète) ----------
+// Même principe que le format binaire ci-dessus, mais un seul bitmap par extension (souhaits
+// uniquement, pas de possession/doublons) : plus léger, et surtout ça n'expose pas le détail
+// de toute la collection de l'expéditeur pour un simple partage de souhaits.
+
+function encodeWishlistBinary(sets) {
+  const writer = new ByteWriter();
+  const included = sets.filter((set) => set.cards.some((card) => isWishlisted(card.id))).slice(0, 255);
+
+  writer.u8(included.length);
+  included.forEach((set) => {
+    const idBytes = new TextEncoder().encode(set.id);
+    writer.u8(Math.min(idBytes.length, 255));
+    writer.raw(idBytes.slice(0, 255));
+
+    const n = set.cards.length;
+    writer.u16(n);
+    const wishBits = new Uint8Array(Math.ceil(n / 8));
+    set.cards.forEach((card, i) => {
+      if (isWishlisted(card.id)) wishBits[i >> 3] |= 1 << (i % 8);
+    });
+    writer.raw(wishBits);
+  });
+
+  return writer.toUint8Array();
+}
+
+function decodeWishlistBinary(bytes, sets) {
+  const reader = new ByteReader(bytes);
+  const setsById = new Map(sets.map((set) => [set.id, set]));
+  const ids = [];
+
+  const setCount = reader.u8();
+  for (let s = 0; s < setCount; s++) {
+    const idLen = reader.u8();
+    const setId = new TextDecoder().decode(reader.raw(idLen));
+    const n = reader.u16();
+    const wishBits = reader.raw(Math.ceil(n / 8));
+    const localSet = setsById.get(setId);
+    for (let i = 0; i < n; i++) {
+      if ((wishBits[i >> 3] >> (i % 8)) & 1) {
+        const card = localSet?.cards[i];
+        if (card) ids.push(card.id);
+      }
+    }
+  }
+
+  return ids;
+}
+
+async function encodeWishlistForSharing(sets) {
+  const bytes = encodeWishlistBinary(sets);
+  const compressed = await compressBytes(bytes);
+  return toBase64Url(compressed);
+}
+
+/** Décode un lien de partage de liste de souhaits en tableau d'ids de cartes. */
+async function decodeSharedWishlist(encoded, sets) {
+  const compressed = fromBase64Url(encoded);
+  const bytes = await decompressBytes(compressed);
+  return decodeWishlistBinary(bytes, sets);
+}
+
+function buildWishlistShareUrl(encoded) {
+  return `${location.origin}${location.pathname}#wishlist=${encoded}`;
+}
+
+function readWishlistShareFromLocation() {
+  const match = location.hash.match(/wishlist=([^&]+)/);
+  return match ? match[1] : null;
+}
+
 /** Retire le paramètre de synchro de l'URL sans recharger la page (une fois traité). */
 function clearSyncFromLocation() {
   history.replaceState(null, "", location.pathname + location.search);
