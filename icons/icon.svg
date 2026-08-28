@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Icône Ma collection TCG Pocket">
+  <rect width="512" height="512" rx="100" fill="#12141c"/>
+  <g transform="translate(256 266)">
+    <rect x="-120" y="-150" width="180" height="252" rx="20" fill="#242838" stroke="#3a3f58" stroke-width="6" transform="rotate(-10)"/>
+    <rect x="-60" y="-150" width="180" height="252" rx="20" fill="#ffcb05" transform="rotate(4)"/>
+    <circle cx="70" cy="70" r="58" fill="#35c46b"/>
+    <path d="M45 70 l18 20 34 -42" fill="none" stroke="#0a1a0f" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

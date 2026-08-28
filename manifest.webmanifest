@@ -1,0 +1,15 @@
+{
+  "name": "Ma collection Pokémon TCG Pocket",
+  "short_name": "TCG Pocket",
+  "description": "Suivi de collection pour Pokémon TCG Pocket : coche les cartes que tu possèdes et vois d'un coup d'œil ce qu'il te manque.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#12141c",
+  "theme_color": "#12141c",
+  "lang": "fr",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ma collection Pokémon TCG Pocket</title>
+  <meta name="description" content="Suivi de collection pour Pokémon TCG Pocket : coche les cartes que tu possèdes et vois d'un coup d'œil ce qu'il te manque." />
+  <meta name="theme-color" content="#12141c" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
+  <link rel="apple-touch-icon" href="icons/icon.svg" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script>
+    // Applique le thème mémorisé avant le premier rendu pour éviter un flash de mauvais thème.
+    try {
+      var storedTheme = localStorage.getItem("tcgp_theme");
+      document.documentElement.setAttribute("data-theme", storedTheme === "light" ? "light" : "dark");
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#sets-container">Aller au contenu</a>
+
+  <header class="app-header glass">
+    <div class="app-header-top">
+      <h1>Ma collection — Pokémon TCG Pocket</h1>
+      <button type="button" id="theme-toggle" class="btn btn-secondary" aria-pressed="false">🌙 Sombre</button>
+    </div>
+
+    <div id="dashboard" class="dashboard glass" aria-live="polite">Chargement…</div>
+
+    <div id="export-reminder" class="export-reminder" hidden>
+      💾 Pense à exporter ta collection : pas de sauvegarde récente.
+      <button type="button" id="export-reminder-btn" class="btn btn-tiny">Exporter maintenant</button>
+    </div>
+
+    <div class="toolbar">
+      <input
+        type="search"
+        id="search-input"
+        placeholder="Rechercher une carte…"
+        autocomplete="off"
+        aria-label="Rechercher une carte par nom"
+      />
+
+      <div class="toolbar-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="only-missing" />
+          Manquantes seulement
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="hide-completed" />
+          Masquer les extensions complètes
+        </label>
+      </div>
+
+      <div class="toolbar-group">
+        <label class="select-label">
+          Trier :
+          <select id="sort-select" aria-label="Trier les extensions">
+            <option value="release">Date de sortie</option>
+            <option value="completion">Progression</option>
+            <option value="name">Nom</option>
+            <option value="count">Nombre de cartes</option>
+          </select>
+        </label>
+
+        <div class="view-toggle" role="group" aria-label="Mode d'affichage">
+          <button type="button" id="view-grid" class="btn btn-secondary" aria-pressed="true">▦ Grille</button>
+          <button type="button" id="view-list" class="btn btn-secondary" aria-pressed="false">☰ Liste</button>
+        </div>
+      </div>
+
+      <div class="toolbar-group">
+        <button type="button" id="expand-all" class="btn btn-secondary">Tout déplier</button>
+        <button type="button" id="collapse-all" class="btn btn-secondary">Tout plier</button>
+        <button type="button" id="filter-toggle" class="btn btn-secondary" aria-expanded="false" aria-controls="filter-panel">
+          🔎 Filtres
+        </button>
+      </div>
+
+      <div class="toolbar-group">
+        <button type="button" id="refresh-btn" class="btn btn-secondary">Actualiser les données</button>
+        <button type="button" id="copy-missing-btn" class="btn btn-secondary">Copier tout ce qui manque</button>
+        <button type="button" id="export-btn" class="btn btn-secondary">Exporter</button>
+        <label class="btn btn-secondary file-label">
+          Importer
+          <input type="file" id="import-input" accept="application/json" hidden />
+        </label>
+      </div>
+    </div>
+
+    <div id="filter-panel" class="filter-panel glass" hidden></div>
+
+    <p id="status" class="status" role="status"></p>
+  </header>
+
+  <main id="sets-container" class="sets-container"></main>
+
+  <footer class="app-footer">
+    <p>
+      Données fournies par le jeu de données communautaire
+      <a href="https://github.com/flibustier/pokemon-tcg-pocket-database" target="_blank" rel="noopener">pokemon-tcg-pocket-database</a>.
+      Ta collection est enregistrée uniquement dans ce navigateur (localStorage) — pense à
+      l'exporter régulièrement pour ne pas la perdre.
+    </p>
+    <p id="last-modified" class="last-modified"></p>
+  </footer>
+
+  <button type="button" id="back-to-top" class="back-to-top glass" aria-label="Retour en haut de page">↑</button>
+
+  <dialog id="card-detail-dialog" class="card-detail-dialog glass"></dialog>
+
+  <script src="js/api.js"></script>
+  <script src="js/collection.js"></script>
+  <script src="js/theme.js"></script>
+  <script src="js/toast.js"></script>
+  <script src="js/ui-state.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/sw-register.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
