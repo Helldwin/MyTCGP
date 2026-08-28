@@ -12,6 +12,8 @@ const els = {
   dashboard: document.getElementById("dashboard"),
   filterPanel: document.getElementById("filter-panel"),
   filterToggle: document.getElementById("filter-toggle"),
+  toolbarMoreToggle: document.getElementById("toolbar-more-toggle"),
+  toolbarMoreInner: document.getElementById("toolbar-more-inner"),
   search: document.getElementById("search-input"),
   onlyMissing: document.getElementById("only-missing"),
   onlyWishlist: document.getElementById("only-wishlist"),
@@ -460,6 +462,15 @@ els.filterToggle.addEventListener("click", () => {
   els.filterPanel.hidden = expanded;
 });
 
+// Sur mobile, regroupe les actions secondaires (export, partage, synchro…) derrière un bouton
+// "Plus d'actions" repliable — sur desktop, ce bouton est masqué et le contenu toujours visible
+// (voir la règle @media (min-width: 641px) dans style.css).
+els.toolbarMoreToggle.addEventListener("click", () => {
+  const expanded = els.toolbarMoreToggle.getAttribute("aria-expanded") === "true";
+  els.toolbarMoreToggle.setAttribute("aria-expanded", String(!expanded));
+  els.toolbarMoreInner.hidden = expanded;
+});
+
 els.focusModeBtn.addEventListener("click", () => {
   const active = document.body.classList.toggle("focus-mode");
   els.focusModeBtn.setAttribute("aria-pressed", String(active));
@@ -522,7 +533,7 @@ async function openSyncDialog() {
   dialog.showModal();
 
   try {
-    const encoded = await encodeCollectionForSync();
+    const encoded = await encodeCollectionForSync(state.sets);
     const url = buildSyncUrl(encoded);
     const qrModules = generateQrMatrix(url);
 
@@ -569,7 +580,7 @@ async function checkIncomingSync() {
   const encoded = readSyncFromLocation();
   if (!encoded) return;
   try {
-    const payload = await decodeSyncPayload(encoded);
+    const payload = await decodeSyncPayload(encoded, state.sets);
     const count = Object.keys(payload.quantities || {}).length;
     const confirmed = await confirmDialog(
       `Importer cette collection partagée (${count} cartes) ? Elle remplacera ta collection actuelle sur cet appareil.`,

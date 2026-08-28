@@ -88,46 +88,65 @@
         </div>
       </div>
 
-      <div class="toolbar-group">
-        <button type="button" id="expand-all" class="btn btn-secondary">Tout déplier</button>
-        <button type="button" id="collapse-all" class="btn btn-secondary">Tout plier</button>
-        <button type="button" id="filter-toggle" class="btn btn-secondary" aria-expanded="false" aria-controls="filter-panel">
-          🔎 Filtres
-        </button>
-        <button type="button" id="shortcuts-help-btn" class="btn btn-secondary" aria-label="Raccourcis clavier">⌨️</button>
-      </div>
+      <button type="button" id="filter-toggle" class="btn btn-secondary" aria-expanded="false" aria-controls="filter-panel">
+        🔎 Filtres
+      </button>
 
       <!-- Hors d'un .toolbar-group délibérément : doit rester visible même en mode focus,
            sinon impossible de quitter ce mode sans recharger la page. -->
       <button type="button" id="focus-mode-btn" class="btn btn-secondary focus-mode-toggle" aria-pressed="false">🎯 Mode focus</button>
 
-      <div class="toolbar-group">
-        <button type="button" id="refresh-btn" class="btn btn-secondary">Actualiser les données</button>
-        <button type="button" id="copy-missing-btn" class="btn btn-secondary">Copier tout ce qui manque</button>
-        <button type="button" id="export-wishlist-btn" class="btn btn-secondary">★ Exporter mes souhaits</button>
-        <button type="button" id="export-duplicates-btn" class="btn btn-secondary">📦 Exporter mes doublons</button>
-        <select id="share-format-select" aria-label="Format de l'image de partage">
-          <option value="standard">Format standard</option>
-          <option value="square">Format carré (story)</option>
-          <option value="portrait">Format vertical (story)</option>
-        </select>
-        <button type="button" id="share-progress-btn" class="btn btn-secondary">🏆 Partager ma progression</button>
-      </div>
+      <!-- Repliable sur mobile (par défaut fermé, économise beaucoup de défilement avant
+           d'atteindre les extensions) ; toujours dépliée sur desktop, voir la règle
+           `.toolbar-more-inner[hidden] { display: contents }` au-delà de 640px dans style.css.
+           Un <details> natif a été tenté ici mais écarté : Chrome traite le contenu d'un
+           <details> fermé comme non visible (checkVisibility()/hit-testing) même avec un
+           `display` forcé en CSS — contrairement à l'attribut `hidden`, dont le seul effet est
+           une règle CSS de base (`[hidden]{display:none}`) normalement surchargeable. -->
+      <div class="toolbar-more">
+        <button type="button" id="toolbar-more-toggle" class="btn btn-secondary" aria-expanded="false" aria-controls="toolbar-more-inner">
+          ⋯ Plus d'actions
+        </button>
+        <div id="toolbar-more-inner" class="toolbar-more-inner" hidden>
+          <div class="toolbar-group">
+            <button type="button" id="expand-all" class="btn btn-secondary">Tout déplier</button>
+            <button type="button" id="collapse-all" class="btn btn-secondary">Tout plier</button>
+            <button type="button" id="shortcuts-help-btn" class="btn btn-secondary" aria-label="Raccourcis clavier">⌨️</button>
+          </div>
 
-      <div class="toolbar-group">
-        <button type="button" id="sync-btn" class="btn btn-secondary">🔗 Synchroniser un appareil</button>
-        <button type="button" id="export-btn" class="btn btn-secondary">Exporter</button>
-        <label class="btn btn-secondary file-label">
-          Importer
-          <input type="file" id="import-input" accept="application/json" hidden />
-        </label>
+          <div class="toolbar-group">
+            <button type="button" id="refresh-btn" class="btn btn-secondary">Actualiser les données</button>
+            <button type="button" id="copy-missing-btn" class="btn btn-secondary">Copier tout ce qui manque</button>
+            <button type="button" id="export-wishlist-btn" class="btn btn-secondary">★ Exporter mes souhaits</button>
+            <button type="button" id="export-duplicates-btn" class="btn btn-secondary">📦 Exporter mes doublons</button>
+            <select id="share-format-select" aria-label="Format de l'image de partage">
+              <option value="standard">Format standard</option>
+              <option value="square">Format carré (story)</option>
+              <option value="portrait">Format vertical (story)</option>
+            </select>
+            <button type="button" id="share-progress-btn" class="btn btn-secondary">🏆 Partager ma progression</button>
+          </div>
+
+          <div class="toolbar-group">
+            <button type="button" id="sync-btn" class="btn btn-secondary">🔗 Synchroniser un appareil</button>
+            <button type="button" id="export-btn" class="btn btn-secondary">Exporter</button>
+            <label class="btn btn-secondary file-label">
+              Importer
+              <input type="file" id="import-input" accept="application/json" hidden />
+            </label>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div id="filter-panel" class="filter-panel glass" hidden></div>
-
     <p id="status" class="status" role="status"></p>
   </header>
+
+  <!-- Hors du <header> délibérément : le header est en `backdrop-filter` (voir .glass), qui crée
+       un nouveau bloc de confinement pour tout descendant en `position: fixed` — le panneau se
+       positionnerait alors par rapport au header au lieu de l'écran (feuille du bas cassée en
+       mobile, superposée au contenu au lieu d'être plaquée en bas de l'écran). -->
+  <div id="filter-panel" class="filter-panel glass" hidden></div>
 
   <main id="sets-container" class="sets-container"></main>
 

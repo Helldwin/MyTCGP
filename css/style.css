@@ -299,6 +299,24 @@ button {
   }
 }
 
+.toolbar-more-inner[hidden] {
+  display: none;
+}
+
+/* Repliée par défaut uniquement en dessous de 640px — au-delà, .toolbar-more-inner reste
+   toujours dépliée (affichée "à plat" dans .toolbar, comme avant l'ajout de ce conteneur),
+   quel que soit l'attribut hidden, et le bouton qui replie/déplie disparaît. */
+@media (min-width: 641px) {
+  #toolbar-more-toggle {
+    display: none;
+  }
+
+  .toolbar-more-inner[hidden],
+  .toolbar-more-inner {
+    display: contents;
+  }
+}
+
 #search-input {
   flex: 1 1 220px;
   padding: 8px 12px;
@@ -407,6 +425,18 @@ button {
 
 .filter-panel[hidden] {
   display: none;
+}
+
+.filter-panel-head {
+  display: none;
+  flex-basis: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.filter-panel-title {
+  font-weight: 700;
 }
 
 .filter-group {
@@ -974,8 +1004,16 @@ button {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transition: bottom 0.2s ease;
   z-index: 60;
   width: min(92vw, 420px);
+}
+
+/* Le toast et la barre de sélection multiple partagent la même position fixe en bas d'écran —
+   sans ça, ils se superposent dès que les deux sont visibles en même temps (ex. cocher une
+   carte pendant qu'une sélection est active). On remonte le toast au-dessus de la barre. */
+body:has(.selection-bar:not([hidden])) .toast-container {
+  bottom: 74px;
 }
 
 .toast {
@@ -1390,6 +1428,7 @@ body.focus-mode .dashboard,
 body.focus-mode .export-reminder,
 body.focus-mode .new-extension-banner,
 body.focus-mode .toolbar-group,
+body.focus-mode .toolbar-more,
 body.focus-mode .filter-panel,
 body.focus-mode .status {
   display: none !important;
@@ -1418,6 +1457,16 @@ body.focus-mode #search-input {
 
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {
+  /* .app-header (dashboard + toolbar) peut dépasser 700px de haut — souvent plus que l'écran
+     d'un téléphone. En `position: sticky` (comme sur desktop, où le header est bien plus bas),
+     un header plus grand que le viewport reste "collé" en couvrant la quasi-totalité de l'écran
+     dès qu'on scrolle un peu : le contenu en dessous devient inatteignable au toucher — cassé,
+     pas juste inélégant. On repasse en flux normal (le header défile avec le reste), avec le
+     bouton "↑ Retour en haut" (déjà existant) pour revenir facilement au bandeau d'outils. */
+  .app-header {
+    position: static;
+  }
+
   .app-header-top h1 {
     font-size: 1.05rem;
   }
@@ -1425,6 +1474,24 @@ body.focus-mode #search-input {
   .dashboard {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  /* .dash-series-group / .dash-rarity-group ont un flex-basis pensé pour le layout desktop
+     (une LARGEUR d'environ 260/220px, .dashboard étant alors en ligne). Une fois .dashboard
+     basculé en flex-direction:column ci-dessus, ce même flex-basis devient une HAUTEUR
+     minimale de 260/220px — une boîte bien plus haute que son contenu réel, avec beaucoup de
+     vide. On revient à une hauteur naturelle (flex-basis:auto) sur mobile. */
+  .dash-series-group,
+  .dash-rarity-group {
+    flex-basis: auto;
+  }
+
+  /* Une ligne par série (largeur pleine) : à 2 colonnes, des valeurs réelles à 4 chiffres
+     ("1367/1960") ne tiennent plus à côté du libellé + de la barre et se chevauchent — la
+     largeur nécessaire dépasse ce que 2 colonnes peuvent offrir sur un écran de téléphone. */
+  .dash-series {
+    min-width: 0;
+    flex: 1 1 100%;
   }
 
   .filter-panel {
@@ -1435,6 +1502,34 @@ body.focus-mode #search-input {
     border-radius: var(--radius) var(--radius) 0 0;
     z-index: 40;
     box-shadow: 0 -8px 24px var(--shadow);
+  }
+
+  .filter-panel-head {
+    display: flex;
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    margin: -14px -14px 4px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #toolbar-more-toggle {
+    display: inline-flex;
+  }
+
+  .toolbar-more-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding-top: 10px;
+    flex-basis: 100%;
+  }
+
+  .toolbar-more .toolbar-group {
+    padding-left: 0;
+    border-left: none;
   }
 
   .card-detail {

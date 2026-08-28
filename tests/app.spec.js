@@ -162,8 +162,30 @@ test.describe("Export / import / synchronisation", () => {
     expect(url).toContain("#sync=");
 
     const encoded = url.split("#sync=")[1];
-    const decoded = await page.evaluate((enc) => decodeSyncPayload(enc), encoded);
+    const decoded = await page.evaluate((enc) => decodeSyncPayload(enc, state.sets), encoded);
     expect(Object.keys(decoded.quantities)).toHaveLength(5);
+  });
+
+  test("le lien de synchronisation reste dans la capacité d'un QR code même pour une collection presque complète", async ({ page }) => {
+    await freshVisit(page);
+    // Le bug d'origine : l'ancien format JSON {id: quantité} d'une grosse collection dépassait
+    // la capacité d'un QR code (le QR ne se générait plus du tout). On vérifie ici qu'une
+    // collection quasi complète, avec doublons, reste bien encodable dans un QR.
+    await page.evaluate(() => {
+      state.sets.forEach((set) => {
+        set.cards.forEach((card, i) => setQuantity(card.id, i % 7 === 0 ? 3 : 1));
+      });
+    });
+
+    await page.click("#sync-btn");
+    await expect(page.locator("#sync-link-input")).toBeVisible({ timeout: 10000 });
+    await expect(page.locator(".sync-qr")).toBeVisible();
+
+    const url = await page.inputValue("#sync-link-input");
+    const encoded = url.split("#sync=")[1];
+    const decoded = await page.evaluate((enc) => decodeSyncPayload(enc, state.sets), encoded);
+    const totalOwned = await page.evaluate(() => state.sets.reduce((n, s) => n + s.cards.length, 0));
+    expect(Object.keys(decoded.quantities)).toHaveLength(totalOwned);
   });
 });
 

@@ -308,6 +308,10 @@ function renderFilterPanel(container, sets, onChange) {
     .join("");
 
   container.innerHTML = `
+    <div class="filter-panel-head">
+      <span class="filter-panel-title">Filtres</span>
+      <button type="button" class="btn btn-tiny" id="filter-panel-close" aria-label="Fermer les filtres">✕ Fermer</button>
+    </div>
     <div class="filter-group">
       <span class="filter-legend">Rareté</span>
       <div class="chip-row">${rarityChips}</div>
@@ -358,6 +362,14 @@ function renderFilterPanel(container, sets, onChange) {
     saveUIState();
     renderFilterPanel(container, sets, onChange);
     onChange();
+  });
+
+  // Bouton de fermeture explicite : en mobile (feuille du bas), le panneau peut recouvrir le
+  // bouton "Filtres" qui l'a ouvert (position: fixed sur ~70% de l'écran) — sans ce bouton,
+  // impossible de le refermer au toucher.
+  container.querySelector("#filter-panel-close").addEventListener("click", () => {
+    container.hidden = true;
+    document.getElementById("filter-toggle")?.setAttribute("aria-expanded", "false");
   });
 }
 
